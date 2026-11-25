@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shelly BLE</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--tx:#14181f;--mut:#6b7280;--bd:#e3e6ea;--ac:#2563eb;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1216;--card:#1a1f27;--tx:#eef0f3;--mut:#98a1ae;--bd:#2a313b;--ac:#5b8def;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1216;--card:#1a1f27;--tx:#eef0f3;--mut:#98a1ae;--bd:#2a313b;--ac:#5b8def;color-scheme:dark}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:720px;margin:0 auto;padding:16px}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+h1{font-size:1.25rem;margin:0}h2{font-size:1rem;margin:24px 0 8px;color:var(--mut);font-weight:600}
+button{font:inherit;color:inherit;cursor:pointer}
+.btn{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 14px}
+.btn.p{background:var(--ac);border-color:var(--ac);color:#fff}
+.btn.d{color:#dc2626}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{position:relative;min-height:110px;border:0;border-radius:16px;color:#fff;font-weight:600;font-size:1.05rem;padding:14px;display:flex;flex-direction:column;justify-content:space-between;align-items:flex-start;text-align:left;box-shadow:0 2px 6px rgba(0,0,0,.18)}
+.tile:active{transform:scale(.97)}
+.tile small{font-weight:400;opacity:.9}
+.st{position:absolute;top:10px;right:12px;font-size:1.1rem}
+.edit .tile{outline:3px dashed rgba(255,255,255,.6);outline-offset:-6px}
+.warn{background:#fef3c7;color:#78350f;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.9rem}
+.row{display:flex;align-items:center;gap:8px;background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin-bottom:6px}
+.row .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.muted{color:var(--mut);font-size:.85rem}
+dialog{border:1px solid var(--bd);border-radius:16px;background:var(--card);color:var(--tx);width:min(92vw,440px);padding:18px}
+dialog::backdrop{background:rgba(0,0,0,.5)}
+label.f{display:block;margin:10px 0 4px;font-size:.85rem;color:var(--mut)}
+input[type=text],select{width:100%;font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+.sw{display:flex;gap:8px;flex-wrap:wrap}
+.sw button{width:32px;height:32px;border-radius:50%;border:3px solid transparent}
+.sw button.on{border-color:var(--tx)}
+.dv{display:flex;align-items:center;gap:8px;margin:6px 0}
+.dv span{flex:1}.dv select{width:auto}
+.acts{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+#toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#111;color:#fff;padding:10px 16px;border-radius:10px;font-size:.9rem;max-width:90vw;display:none}
+</style>
+</head>
+<body>
+<main id="app">
+<header>
+  <h1>Shelly BLE</h1>
+  <div><button class="btn" id="edT">Modifica</button> <button class="btn p" id="addB">+ Pulsante</button></div>
+</header>
+<div class="warn" id="nob" hidden>Web Bluetooth non è supportato da questo browser. Usa Chrome o Edge su Android, Windows, macOS o Linux (non funziona su iOS).</div>
+<div class="grid" id="grid"></div>
+<h2>Shelly accoppiati</h2>
+<div id="devs"></div>
+<button class="btn p" id="pair">+ Accoppia nuovo Shelly</button> <button class="btn" id="pairAll">Non lo trovi? Mostra tutti i BLE</button>
+<p class="muted">Sugli Shelly Plus 1 il Bluetooth deve essere attivo (impostazioni dispositivo → Bluetooth). La comunicazione avviene solo via BLE, senza Wi‑Fi.</p>
+</main>
+
+<dialog id="dlg"></dialog>
+<div id="toast"></div>
+
+<script>
+var SV="5f6d4f53-5f52-5043-5f53-56435f49445f",DC="5f6d4f53-5f52-5043-5f64-6174615f5f5f",TX="5f6d4f53-5f52-5043-5f74-785f63746c5f",RX="5f6d4f53-5f52-5043-5f72-785f63746c5f";
+var COLORS=["#2563eb","#059669","#d97706","#dc2626","#7c3aed","#db2777","#475569"];
+var ACT={toggle:"Commuta",on:"Accendi",off:"Spegni"};
+var st={devices:[],buttons:[]},live={},idle={},status={},editing=false,draft=null;
+var $=function(s){return document.querySelector(s)};
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function uid(){return Math.random().toString(36).slice(2,9)}
+function load(){try{var s=localStorage.getItem("shellyble");if(s)st=JSON.parse(s)}catch(e){}}
+function save(){try{localStorage.setItem("shellyble",JSON.stringify(st))}catch(e){}}
+function toast(m){var t=$("#toast");t.textContent=m;t.style.display="block";clearTimeout(toast.t);toast.t=setTimeout(function(){t.style.display="none"},4000)}
+function dev(id){return st.devices.find(function(d){return d.id===id})}
+
+/* ---- Bluetooth ---- */
+async function getBt(d){
+  if(live[d.id])return live[d.id];
+  if(navigator.bluetooth.getDevices){
+    try{var l=await navigator.bluetooth.getDevices();var f=l.find(function(x){return x.id===d.btId});if(f){live[d.id]=f;return f}}catch(e){}
+  }
+  var b=await navigator.bluetooth.requestDevice({filters:[{name:d.name}],optionalServices:[SV]});
+  live[d.id]=b;d.btId=b.id;save();return b;
+}
+async function rpc(d,method,params){
+  var bt=await getBt(d),g=bt.gatt;
+  clearTimeout(idle[d.id]);
+  if(!g.connected)g=await g.connect();
+  var sv=await g.getPrimaryService(SV);
+  var dc=await sv.getCharacteristic(DC),tx=await sv.getCharacteristic(TX),rx=await sv.getCharacteristic(RX);
+  var body=new TextEncoder().encode(JSON.stringify({id:1,method:method,params:params}));
+  var l=new DataView(new ArrayBuffer(4));l.setUint32(0,body.length);
+  await rx.writeValueWithResponse(l);
+  for(var i=0;i<body.length;i+=200)await dc.writeValueWithResponse(body.slice(i,i+200));
+  var n=(await tx.readValue()).getUint32(0),parts=[],got=0;
+  while(got<n){var v=await dc.readValue();if(!v.byteLength)throw new Error("Risposta vuota");parts.push(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)));got+=v.byteLength}
+  var all=new Uint8Array(got),o=0;parts.forEach(function(p){all.set(p,o);o+=p.length});
+  var r=JSON.parse(new TextDecoder().decode(all));
+  idle[d.id]=setTimeout(function(){try{bt.gatt.disconnect()}catch(e){}},20000);
+  if(r.error)throw new Error(r.error.message||"Errore Shelly");
+  return r.result;
+}
+function call(d,a){return a==="toggle"?rpc(d,"Switch.Toggle",{id:0}):rpc(d,"Switch.Set",{id:0,on:a==="on"})}
+
+async function run(b){
+  if(!navigator.bluetooth)return toast("Bluetooth non supportato");
+  if(status[b.id]==="…")return;
+  status[b.id]="…";render();
+  var errs=[];
+  for(var i=0;i<b.actions.length;i++){
+    var a=b.actions[i],d=dev(a.deviceId);if(!d)continue;
+    try{await call(d,a.action)}catch(e){
+      try{live[d.id]&&live[d.id].gatt.disconnect()}catch(x){}
+      errs.push(d.label+": "+(e.message||e))
+    }
+  }
+  status[b.id]=errs.length?"✕":"✓";
+  if(errs.length)toast(errs.join(" · "));
+  render();
+  setTimeout(function(){delete status[b.id];render()},2500);
+}
+
+async function pairNew(all){
+  if(!navigator.bluetooth)return toast("Bluetooth non supportato");
+  try{
+    var b=await navigator.bluetooth.requestDevice(all?{acceptAllDevices:true,optionalServices:[SV]}:{filters:[{namePrefix:"Shelly"}],optionalServices:[SV]});
+    var ex=st.devices.find(function(d){return d.btId===b.id});
+    if(ex){toast("Già accoppiato: "+ex.label);return}
+    var d={id:uid(),btId:b.id,name:b.name||"Shelly",label:b.name||"Shelly"};
+    live[d.id]=b;st.devices.push(d);
+    st.buttons.push({id:uid(),label:d.label,color:COLORS[st.buttons.length%COLORS.length],actions:[{deviceId:d.id,action:"toggle"}]});
+    save();render();toast("Aggiunto "+d.label);
+  }catch(e){if(e.name!=="NotFoundError")toast(e.message)}
+}
+
+/* ---- UI ---- */
+function render(){
+  var g=$("#grid");g.className="grid"+(editing?" edit":"");
+  g.innerHTML=st.buttons.length?st.buttons.map(function(b){
+    var ds=b.actions.map(function(a){var d=dev(a.deviceId);return d?d.label:null}).filter(Boolean);
+    return '<button class="tile" data-b="'+b.id+'" style="background:'+b.color+'"><span class="st">'+(status[b.id]||"")+'</span><span>'+esc(b.label)+'</span><small>'+(editing?"Tocca per modificare":ds.length+" Shelly")+'</small></button>';
+  }).join(""):'<p class="muted">Nessun pulsante. Accoppia uno Shelly per iniziare.</p>';
+  $("#devs").innerHTML=st.devices.length?st.devices.map(function(d){
+    return '<div class="row"><span class="n">'+esc(d.label)+' <span class="muted">'+esc(d.name)+'</span></span><button class="btn" data-r="'+d.id+'">Rinomina</button><button class="btn d" data-x="'+d.id+'">Rimuovi</button></div>';
+  }).join(""):'<p class="muted">Nessuno Shelly accoppiato.</p>';
+  $("#edT").textContent=editing?"Fine":"Modifica";
+  $("#addB").disabled=!st.devices.length;
+}
+function openEd(b){
+  draft=b?JSON.parse(JSON.stringify(b)):{id:uid(),label:"Nuovo pulsante",color:COLORS[0],actions:[],isNew:true};
+  var d=$("#dlg");
+  d.innerHTML='<h3 style="margin:0 0 8px">'+(draft.isNew?"Nuovo pulsante":"Modifica pulsante")+'</h3>'+
+  '<label class="f">Nome</label><input type="text" id="eL" value="'+esc(draft.label)+'">'+
+  '<label class="f">Colore</label><div class="sw">'+COLORS.map(function(c){return '<button data-c="'+c+'" style="background:'+c+'" class="'+(c===draft.color?"on":"")+'"></button>'}).join("")+'</div>'+
+  '<label class="f">Shelly da azionare con un solo tocco</label>'+
+  st.devices.map(function(s){
+    var a=draft.actions.find(function(x){return x.deviceId===s.id});
+    return '<div class="dv"><input type="checkbox" data-k="'+s.id+'"'+(a?" checked":"")+'><span>'+esc(s.label)+'</span><select data-a="'+s.id+'">'+Object.keys(ACT).map(function(k){return '<option value="'+k+'"'+(a&&a.action===k?" selected":"")+'>'+ACT[k]+'</option>'}).join("")+'</select></div>';
+  }).join("")+
+  '<div class="acts">'+(draft.isNew?"":'<button class="btn d" id="eD">Elimina</button>')+'<button class="btn" id="eC">Annulla</button><button class="btn p" id="eS">Salva</button></div>';
+  d.showModal();
+}
+document.addEventListener("click",function(e){
+  var t=e.target.closest("button,input");if(!t)return;
+  if(t.dataset.b){var b=st.buttons.find(function(x){return x.id===t.dataset.b});return editing?openEd(b):run(b)}
+  if(t.dataset.c){draft.color=t.dataset.c;document.querySelectorAll(".sw button").forEach(function(x){x.classList.toggle("on",x===t)});return}
+  if(t.dataset.r){var d=dev(t.dataset.r),n=prompt("Nuovo nome",d.label);if(n&&n.trim()){d.label=n.trim();save();render()}return}
+  if(t.dataset.x){var d2=dev(t.dataset.x);if(confirm("Rimuovere "+d2.label+"? Verrà tolto anche dai pulsanti.")){st.devices=st.devices.filter(function(x){return x.id!==d2.id});st.buttons.forEach(function(b){b.actions=b.actions.filter(function(a){return a.deviceId!==d2.id})});save();render()}return}
+  if(t.id==="eC")return $("#dlg").close();
+  if(t.id==="eD"){st.buttons=st.buttons.filter(function(b){return b.id!==draft.id});save();render();return $("#dlg").close()}
+  if(t.id==="eS"){
+    draft.label=$("#eL").value.trim()||"Pulsante";
+    draft.actions=[];
+    document.querySelectorAll("[data-k]").forEach(function(c){if(c.checked)draft.actions.push({deviceId:c.dataset.k,action:document.querySelector('[data-a="'+c.dataset.k+'"]').value})});
+    if(!draft.actions.length)return toast("Seleziona almeno uno Shelly");
+    var isNew=draft.isNew;delete draft.isNew;
+    if(isNew)st.buttons.push(draft);else st.buttons=st.buttons.map(function(b){return b.id===draft.id?draft:b});
+    save();render();return $("#dlg").close();
+  }
+});
+$("#edT").onclick=function(){editing=!editing;render()};
+$("#addB").onclick=function(){openEd(null)};
+$("#pair").onclick=function(){pairNew()};$("#pairAll").onclick=function(){pairNew(true)};
+load();render();
+if(!navigator.bluetooth)$("#nob").hidden=false;
+</script>
+</body>
+</html>
