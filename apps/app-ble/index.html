@@ -80,7 +80,7 @@ async function getBt(d){
   var b=await navigator.bluetooth.requestDevice({filters:[{name:d.name}],optionalServices:[SV]});
   live[d.id]=b;d.btId=b.id;save();return b;
 }
-function pr(c){return Object.keys(c.properties).filter(function(k){return c.properties[k]}).join(",")}
+function pr(c){var p=c.properties;return ["read","write","writeWithoutResponse","notify","indicate"].filter(function(k){return p[k]}).join(",")||"nessuna"}
 async function wr(c,v,nm){
   var p=c.properties,f=[],err;
   if(p.write)f.push("writeValueWithResponse");
@@ -100,9 +100,21 @@ async function rpc(d,method,params){
   var dc=await sv.getCharacteristic(DC),tx=await sv.getCharacteristic(TX),rx=await sv.getCharacteristic(RX);
   var body=new TextEncoder().encode(JSON.stringify({id:1,method:method,params:params}));
   var l=new DataView(new ArrayBuffer(4));l.setUint32(0,body.length);
+  var np=null;
+  if(tx.properties.notify||tx.properties.indicate){
+    try{
+      await tx.startNotifications();
+      np=new Promise(function(res,rej){
+        var t=setTimeout(function(){tx.removeEventListener("characteristicvaluechanged",h);rej(new Error("tx_ctl: nessuna risposta (timeout)"))},8000);
+        function h(ev){clearTimeout(t);tx.removeEventListener("characteristicvaluechanged",h);res(ev.target.value.getUint32(0))}
+        tx.addEventListener("characteristicvaluechanged",h);
+      });
+      np.catch(function(){});
+    }catch(e){np=null}
+  }
   await wr(rx,l,"rx_ctl");
   for(var i=0;i<body.length;i+=100)await wr(dc,body.slice(i,i+100),"data");
-  var n=(await rd(tx,"tx_ctl")).getUint32(0),parts=[],got=0;
+  var n,parts=[],got=0;n=np?await np:(await rd(tx,"tx_ctl")).getUint32(0);
   while(got<n){var v=await rd(dc,"data");if(!v.byteLength)throw new Error("Risposta vuota");parts.push(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)));got+=v.byteLength}
   var all=new Uint8Array(got),o=0;parts.forEach(function(p){all.set(p,o);o+=p.length});
   var r=JSON.parse(new TextDecoder().decode(all));
