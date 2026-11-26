@@ -90,7 +90,7 @@ async function wr(c,v,nm){
   throw new Error(nm+": "+err.message+" (propriet\u00e0: "+pr(c)+")");
 }
 async function rd(c,nm){
-  try{return await c.readValue()}catch(e){throw new Error(nm+": "+e.message+" (propriet\u00e0: "+pr(c)+")")}
+  try{return await c.readValue()}catch(e){window.rdFail=1;throw new Error(nm+": "+e.message+" (propriet\u00e0: "+pr(c)+")")}
 }
 async function rpc(d,method,params){
   var bt=await getBt(d),g=bt.gatt;
@@ -105,7 +105,7 @@ async function rpc(d,method,params){
     try{
       await tx.startNotifications();
       np=new Promise(function(res,rej){
-        var t=setTimeout(function(){tx.removeEventListener("characteristicvaluechanged",h);rej(new Error("tx_ctl: nessuna risposta (timeout)"))},8000);
+        var t=setTimeout(function(){tx.removeEventListener("characteristicvaluechanged",h);window.rdFail=1;rej(new Error("tx_ctl: nessuna risposta (timeout)"))},8000);
         function h(ev){clearTimeout(t);tx.removeEventListener("characteristicvaluechanged",h);res(ev.target.value.getUint32(0))}
         tx.addEventListener("characteristicvaluechanged",h);
       });
@@ -122,7 +122,14 @@ async function rpc(d,method,params){
   if(r.error)throw new Error(r.error.message||"Errore Shelly");
   return r.result;
 }
-function call(d,a){return a==="toggle"?rpc(d,"Switch.Toggle",{id:0}):rpc(d,"Switch.Set",{id:0,on:a==="on"})}
+function call(d,a){
+  window.rdFail=0;
+  var p=a==="toggle"?rpc(d,"Switch.Toggle",{id:0}):rpc(d,"Switch.Set",{id:0,on:a==="on"});
+  return p.catch(function(e){
+    if(window.rdFail){idle[d.id]=setTimeout(function(){try{live[d.id].gatt.disconnect()}catch(x){}},20000);return null}
+    throw e;
+  });
+}
 
 async function run(b){
   if(!navigator.bluetooth)return toast("Bluetooth non supportato");
