@@ -1,0 +1,889 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Display Editor Pro</title>
+    <link rel="icon" type="image/png" href="cv.png">
+    <style>
+        :root { --primary: #2563eb; --danger: #dc2626; --bg: #f3f4f6; --border: #d1d5db; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif; overflow: hidden; background: var(--bg); color: #1f2937; }
+        
+        .container { display: flex; flex-direction: column; height: 100vh; }
+        
+        .toolbar { background: white; border-bottom: 1px solid var(--border); padding: 8px 16px; display: flex; gap: 12px; align-items: center; }
+        
+        .btn { padding: 8px 14px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.2s; background: white; }
+        .btn:hover { background: #f9fafb; border-color: #9ca3af; }
+        .btn-primary { background: var(--primary); color: white; border: none; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-danger { color: var(--danger); border-color: var(--danger); }
+        .btn-danger:hover { background: #fef2f2; }
+
+        .main-content { flex: 1; display: flex; overflow: hidden; position: relative; }
+        
+        .panel { background: white; width: 320px; border-right: 1px solid var(--border); overflow-y: auto; transition: transform 0.3s ease, width 0.3s ease; flex-shrink: 0; z-index: 30; }
+        .panel-right { border-right: none; border-left: 1px solid var(--border); }
+        
+        .panel.closed { width: 0; transform: translateX(-100%); }
+        .panel-right.closed { width: 0; transform: translateX(100%); }
+
+        .canvas-area { flex: 1; background: #cbd5e1; display: flex; align-items: center; justify-content: center; overflow: auto; position: relative; }
+        .canvas-wrapper { background: white; box-shadow: 0 20px 50px rgba(0,0,0,0.15); border-radius: 4px; }
+        canvas { display: block; cursor: crosshair; touch-action: none; outline: none; }
+
+        .toggle-handle { position: absolute; top: 50%; transform: translateY(-50%); width: 24px; height: 48px; background: white; border: 1px solid var(--border); z-index: 40; cursor: pointer; display: flex; align-items: center; justify-content: center; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: left 0.3s ease, right 0.3s ease; }
+        
+        #toggleLeft { left: 320px; }
+        #toggleRight { right: 320px; }
+
+        .panel.closed + #toggleLeft { left: 0; }
+        .panel-right.closed + #toggleRight { right: 0; }
+
+        .panel-section { padding: 20px; border-bottom: 1px solid #f3f4f6; }
+        h3 { font-size: 11px; text-transform: uppercase; color: #6b7280; margin-bottom: 12px; letter-spacing: 0.05em; }
+        
+        label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+        input[type="text"], input[type="number"], select, textarea { width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
+        
+        .icon-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .asset-item { border: 1px solid #e5e7eb; border-radius: 4px; padding: 4px; position: relative; cursor: pointer; background: #f9fafb; }
+        .asset-item img { width: 100%; aspect-ratio: 1; object-fit: contain; }
+        .font-item { background: #f3f4f6; padding: 8px; border-radius: 4px; font-size: 11px; position: relative; margin-bottom: 4px; border: 1px solid #e5e7eb; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: 25px;}
+        .delete-btn { position: absolute; top: -5px; right: -5px; background: var(--danger); color: white; border: none; border-radius: 50%; width: 18px; height: 18px; font-size: 10px; cursor: pointer; z-index: 5; display: flex; align-items: center; justify-content: center; }
+        .font-delete-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); background: var(--danger); color: white; border: none; border-radius: 50%; width: 16px; height: 16px; font-size: 8px; cursor: pointer; }
+
+        .upload-zone { border: 2px dashed var(--border); padding: 15px; text-align: center; border-radius: 8px; cursor: pointer; color: #6b7280; font-size: 12px; margin-bottom: 10px; transition: all 0.2s; }
+        .upload-zone:hover { border-color: var(--primary); background: #eff6ff; color: var(--primary); }
+        
+        .flex-row { display: flex; gap: 8px; align-items: center; }
+        .control-group { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+        .control-group input[type="range"] { flex: 1; margin: 0; }
+        .control-group input[type="number"] { width: 75px; margin: 0; flex-shrink: 0; }
+        
+        .empty-msg { text-align: center; color: #9ca3af; padding: 40px 20px; font-size: 14px; }
+        .bg-preview { width: 60px; height: 60px; margin-top: 10px; }
+
+        .switch-container { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 20px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        .shortcut-hint { font-size: 10px; color: #9ca3af; margin-top: 4px; font-style: italic; }
+        .canvas-wrapper { transition: transform 0.2s ease-out; transform-origin: center center; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="toolbar">
+        <div class="flex-row">
+            <button class="btn" onclick="app.exportImage('png')">Esporta PNG</button>
+            <button class="btn" onclick="app.exportImage('jpg')">Esporta JPG</button>
+            <button class="btn btn-danger" onclick="location.reload()">Reset</button>
+        </div>
+        <div style="flex:1"></div>
+        
+        <div class="flex-row" style="background: #f3f4f6; padding: 4px 8px; border-radius: 6px; margin-right: 12px;">
+    <label style="margin:0; font-size:11px">Zoom:</label>
+    <button class="btn" style="padding:2px 8px" onclick="app.updateZoom(-0.1)">-</button>
+    <span id="zoomVal" style="font-size:12px; min-width:40px; text-align:center">100%</span>
+    <button class="btn" style="padding:2px 8px" onclick="app.updateZoom(0.1)">+</button>
+        </div>
+
+        <button class="btn" onclick="app.saveProject()">Salva Progetto</button>
+        <button class="btn btn-primary" onclick="document.getElementById('loadInput').click()">Carica Progetto</button>
+        <input type="file" id="loadInput" hidden accept=".json" onchange="app.loadProject(event)">
+    </div>
+
+    <div class="main-content">
+        <aside class="panel" id="panelLeft"></aside>
+        <div id="toggleLeft" class="toggle-handle" onclick="app.togglePanel('panelLeft')">◀</div>
+
+        <main class="canvas-area">
+            <div class="canvas-wrapper">
+                <canvas id="editorCanvas" tabindex="0"></canvas>
+            </div>
+        </main>
+
+        <aside class="panel panel-right" id="panelRight">
+            <div id="propsContainer">
+                <div class="empty-msg">Seleziona un elemento sul canvas per modificarlo</div>
+            </div>
+        </aside>
+        <div id="toggleRight" class="toggle-handle" onclick="app.togglePanel('panelRight')">▶</div>
+    </div>
+</div>
+
+<script>
+const app = {
+    canvas: null,
+    ctx: null,
+    elements: [],
+    selectedId: null,
+    bgImage: null,
+    bgThumb: null,
+    icons: [],
+    customFonts: [], // { name: string, data: base64 }
+    isDragging: false,
+    offset: { x: 0, y: 0 },
+    fonts: ['Arial', 'Verdana', 'Georgia', 'Courier New', 'Inter', 'Serif', 'Sans-serif'],
+    showGrid: false,
+    gridSize: 20,
+       currentZoom: 1,
+    updateZoom(delta) {
+        this.currentZoom = Math.min(Math.max(0.1, this.currentZoom + delta), 3);
+        const wrapper = document.querySelector('.canvas-wrapper');
+        wrapper.style.transform = `scale(${this.currentZoom})`;
+        document.getElementById('zoomVal').innerText = Math.round(this.currentZoom * 100) + '%';
+    },
+
+
+    init() {
+        this.canvas = document.getElementById('editorCanvas');
+        this.ctx = this.canvas.getContext('2d');
+        this.resizeCanvas(800, 600);
+        this.setupLibraryUI();
+
+        this.canvas.addEventListener('mousedown', e => this.onStart(e));
+        window.addEventListener('mousemove', e => this.onMove(e));
+        window.addEventListener('mouseup', () => this.onEnd());
+
+        this.canvas.addEventListener('touchstart', e => this.onStart(e.touches[0]), {passive: false});
+        window.addEventListener('touchmove', e => this.onMove(e.touches[0]), {passive: false});
+        window.addEventListener('touchend', () => this.onEnd());
+
+        window.addEventListener('keydown', e => this.onKeyDown(e));
+
+        this.render();
+    },
+
+    setupLibraryUI() {
+        const left = document.getElementById('panelLeft');
+        left.innerHTML = `
+            <div class="panel-section">
+                <h3>Sfondo</h3>
+                <div id="bgAssetContainer">
+                    <div class="upload-zone" onclick="document.getElementById('bgInput').click()">Carica Sfondo</div>
+                </div>
+                <input type="file" id="bgInput" hidden accept="image/*" onchange="app.handleBgUpload(event)">
+            </div>
+            <div class="panel-section">
+                <h3>Caratteri</h3>
+                <div class="upload-zone" onclick="document.getElementById('fontInput').click()">Carica Font Personalizzato</div>
+                <input type="file" id="fontInput" hidden accept=".ttf,.otf,.woff,.woff2" onchange="app.handleFontUpload(event)">
+                <div id="customFontsList"></div>
+            </div>
+            <div class="panel-section">
+                <h3>Libreria Icone</h3>
+                <div class="upload-zone" onclick="document.getElementById('iconInput').click()">+ Aggiungi Icona</div>
+                <input type="file" id="iconInput" hidden accept="image/*" multiple onchange="app.handleIconLibrary(event)">
+                <div id="iconLibrary" class="icon-grid"></div>
+            </div>
+            <div class="panel-section">
+                <h3>Elementi</h3>
+                <div class="flex-row">
+                    <button class="btn btn-primary" style="flex:1" onclick="app.addText()">+ Testo</button>
+                    <button class="btn btn-primary" style="flex:1" onclick="app.addShape()">+ Forma</button>
+                </div>
+            </div>
+        `;
+        this.renderBgThumb();
+        this.renderLibrary();
+        this.renderFontsList();
+    },
+
+    resizeCanvas(w, h) {
+        this.canvas.width = w;
+        this.canvas.height = h;
+        this.render();
+    },
+
+    togglePanel(id) {
+        const el = document.getElementById(id);
+        const btn = document.getElementById(id === 'panelLeft' ? 'toggleLeft' : 'toggleRight');
+        el.classList.toggle('closed');
+        if(id === 'panelLeft') btn.innerText = el.classList.contains('closed') ? '▶' : '◀';
+        else btn.innerText = el.classList.contains('closed') ? '◀' : '▶';
+    },
+
+    drawGrid() {
+        if (!this.showGrid) return;
+        this.ctx.save();
+        this.ctx.beginPath();
+        this.ctx.strokeStyle = "rgba(0, 0, 0, 0.1)";
+        this.ctx.lineWidth = 0.5;
+        for (let x = 0; x <= this.canvas.width; x += this.gridSize) {
+            this.ctx.moveTo(x, 0); this.ctx.lineTo(x, this.canvas.height);
+        }
+        for (let y = 0; y <= this.canvas.height; y += this.gridSize) {
+            this.ctx.moveTo(0, y); this.ctx.lineTo(this.canvas.width, y);
+        }
+        this.ctx.stroke();
+        this.ctx.restore();
+    },
+
+    render() {
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        if (this.bgImage) {
+            this.ctx.drawImage(this.bgImage, 0, 0, this.canvas.width, this.canvas.height);
+        } else {
+            this.ctx.fillStyle = "#ffffff";
+            this.ctx.fillRect(0,0,this.canvas.width, this.canvas.height);
+        }
+        this.drawGrid();
+        this.elements.forEach(el => {
+            this.ctx.save();
+            this.ctx.translate(el.x, el.y);
+            this.ctx.rotate(el.rotation * Math.PI / 180);
+            this.ctx.globalAlpha = el.opacity || 1;
+            if (el.type === 'text') this.drawText(el);
+            else if (el.type === 'icon') {
+                const w = el.w * el.scale; const h = el.h * el.scale;
+                this.ctx.drawImage(el.img, -w/2, -h/2, w, h);
+            } else if (el.type === 'shape') this.drawShape(el);
+            if (this.selectedId === el.id) {
+                this.ctx.strokeStyle = '#2563eb'; this.ctx.lineWidth = 2; this.ctx.setLineDash([5, 5]);
+                const bounds = this.getBounds(el);
+                this.ctx.strokeRect(-bounds.w/2 - 5, -bounds.h/2 - 5, bounds.w + 10, bounds.h + 10);
+            }
+            this.ctx.restore();
+        });
+    },
+
+    drawText(el) {
+        const fontSize = el.fontSize * el.scale;
+        this.ctx.font = `${el.fontWeight || 'normal'} ${fontSize}px ${el.fontFamily}`;
+        this.ctx.textBaseline = 'middle';
+        const lines = el.text.split('\n');
+        const lineHeight = fontSize * (el.lineHeight || 1.2);
+        const totalH = lines.length * lineHeight;
+        const bounds = this.getBounds(el);
+        const maxW = bounds.w;
+        lines.forEach((line, i) => {
+            const y = (i * lineHeight) - (totalH / 2) + (lineHeight / 2);
+            let xOffset = 0;
+            if (el.align === 'left') { xOffset = -maxW / 2; this.ctx.textAlign = 'left'; }
+            else if (el.align === 'right') { xOffset = maxW / 2; this.ctx.textAlign = 'right'; }
+            else { xOffset = 0; this.ctx.textAlign = 'center'; }
+            if (el.strokeWidth > 0) {
+                this.ctx.strokeStyle = el.stroke; this.ctx.lineWidth = el.strokeWidth * el.scale;
+                this.ctx.lineJoin = 'round'; this.ctx.strokeText(line, xOffset, y);
+            }
+            this.ctx.fillStyle = el.color; this.ctx.fillText(line, xOffset, y);
+        });
+    },
+drawTextScaled(ctx, el, scale) {
+    const fontSize = el.fontSize * el.scale * scale;
+    ctx.font = `${el.fontWeight || 'normal'} ${fontSize}px ${el.fontFamily}`;
+    ctx.textBaseline = 'middle';
+
+    const lines = el.text.split('\n');
+    const lineHeight = fontSize * (el.lineHeight || 1.2);
+    const totalH = lines.length * lineHeight;
+
+    lines.forEach((line, i) => {
+        const y = (i * lineHeight) - (totalH / 2) + (lineHeight / 2);
+
+        let x = 0;
+        if (el.align === 'left') { ctx.textAlign = 'left'; x = -this.getBounds(el).w * scale / 2; }
+        else if (el.align === 'right') { ctx.textAlign = 'right'; x = this.getBounds(el).w * scale / 2; }
+        else ctx.textAlign = 'center';
+
+        if (el.strokeWidth > 0) {
+            ctx.strokeStyle = el.stroke;
+            ctx.lineWidth = el.strokeWidth * el.scale * scale;
+            ctx.strokeText(line, x, y);
+        }
+
+        ctx.fillStyle = el.color;
+        ctx.fillText(line, x, y);
+    });
+},
+
+
+
+
+
+    drawShape(el) {
+        const w = el.w * el.scale; const h = el.h * el.scale;
+        this.ctx.beginPath();
+        if (el.shapeType === 'rect') {
+            const r = (el.borderRadius || 0) * el.scale; this.ctx.roundRect(-w/2, -h/2, w, h, r);
+        } else if (el.shapeType === 'circle') this.ctx.arc(0, 0, w/2, 0, Math.PI * 2);
+        else if (el.shapeType === 'line') { this.ctx.moveTo(-w/2, 0); this.ctx.lineTo(w/2, 0); }
+        if (el.shapeType !== 'line' && el.fillType !== 'none') {
+            if (el.fillType === 'gradient') {
+                const grad = this.ctx.createLinearGradient(-w/2, 0, w/2, 0);
+                grad.addColorStop(0, el.color); grad.addColorStop(1, el.color2 || '#ffffff');
+                this.ctx.fillStyle = grad;
+            } else this.ctx.fillStyle = el.color;
+            this.ctx.fill();
+        }
+        if (el.strokeWidth > 0) {
+            this.ctx.strokeStyle = el.stroke; this.ctx.lineWidth = el.strokeWidth * el.scale;
+            this.ctx.stroke();
+        }
+    },
+drawShapeScaled(ctx, el, scale) {
+    const w = el.w * el.scale * scale;
+    const h = el.h * el.scale * scale;
+
+    ctx.beginPath();
+    if (el.shapeType === 'rect') {
+        const r = (el.borderRadius || 0) * el.scale * scale;
+        ctx.roundRect(-w/2, -h/2, w, h, r);
+    } 
+    else if (el.shapeType === 'circle') {
+        ctx.arc(0, 0, w/2, 0, Math.PI * 2);
+    } 
+    else if (el.shapeType === 'line') {
+        ctx.moveTo(-w/2, 0);
+        ctx.lineTo(w/2, 0);
+    }
+
+    if (el.shapeType !== 'line' && el.fillType !== 'none') {
+        if (el.fillType === 'gradient') {
+            const grad = ctx.createLinearGradient(-w/2, 0, w/2, 0);
+            grad.addColorStop(0, el.color);
+            grad.addColorStop(1, el.color2 || '#ffffff');
+            ctx.fillStyle = grad;
+        } else ctx.fillStyle = el.color;
+        ctx.fill();
+    }
+
+    if (el.strokeWidth > 0) {
+        ctx.strokeStyle = el.stroke;
+        ctx.lineWidth = el.strokeWidth * el.scale * scale;
+        ctx.stroke();
+    }
+},
+
+
+
+
+
+
+    getBounds(el) {
+        if (el.type === 'icon' || el.type === 'shape') return { w: el.w * el.scale, h: el.h * el.scale };
+        this.ctx.font = `${el.fontWeight || 'normal'} ${el.fontSize * el.scale}px ${el.fontFamily}`;
+        const lines = el.text.split('\n');
+        const maxW = Math.max(...lines.map(l => this.ctx.measureText(l).width));
+        return { w: maxW, h: lines.length * (el.fontSize * el.scale * (el.lineHeight || 1.2)) };
+    },
+
+    onStart(e) {
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+        const my = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+        let found = null;
+        for (let i = this.elements.length - 1; i >= 0; i--) {
+            const el = this.elements[i];
+            const b = this.getBounds(el);
+            if (mx > el.x - b.w/2 && mx < el.x + b.w/2 && my > el.y - b.h/2 && my < el.y + b.h/2) {
+                found = el; break;
+            }
+        }
+        this.selectedId = found ? found.id : null;
+        if (found) {
+            this.isDragging = true;
+            this.offset = { x: mx - found.x, y: my - found.y };
+            this.canvas.focus();
+        }
+        this.updatePropsUI();
+        this.render();
+    },
+
+    onMove(e) {
+        if (!this.isDragging || !this.selectedId) return;
+        const rect = this.canvas.getBoundingClientRect();
+        const mx = (e.clientX - rect.left) * (this.canvas.width / rect.width);
+        const my = (e.clientY - rect.top) * (this.canvas.height / rect.height);
+        const el = this.elements.find(i => i.id === this.selectedId);
+        let newX = mx - this.offset.x; let newY = my - this.offset.y;
+        if (this.showGrid) {
+            newX = Math.round(newX / this.gridSize) * this.gridSize;
+            newY = Math.round(newY / this.gridSize) * this.gridSize;
+        }
+        el.x = newX; el.y = newY;
+        this.render();
+        this.updateCoordsOnly();
+    },
+
+    onEnd() { this.isDragging = false; },
+
+    onKeyDown(e) {
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) {
+            if (e.key === 'Enter') document.activeElement.blur();
+            return;
+        }
+        
+        // Clone with Ctrl + D or Cmd + D
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            this.cloneSelected();
+            return;
+        }
+
+        if (!this.selectedId) return;
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        const step = e.shiftKey ? (this.showGrid ? this.gridSize : 10) : 1;
+        let moved = false;
+        switch(e.key) {
+            case 'ArrowUp': el.y -= step; moved = true; break;
+            case 'ArrowDown': el.y += step; moved = true; break;
+            case 'ArrowLeft': el.x -= step; moved = true; break;
+            case 'ArrowRight': el.x += step; moved = true; break;
+            case 'Delete': case 'Backspace': this.deleteSelected(); return;
+        }
+        if (moved) {
+            e.preventDefault();
+            this.render();
+            this.updateCoordsOnly();
+        }
+    },
+
+    addText() {
+        const id = Date.now();
+        this.elements.push({
+            id, type: 'text', text: 'Nuovo Testo', 
+            x: this.canvas.width/2, y: this.canvas.height/2, 
+            fontSize: 30, scale: 1.0, rotation: 0, 
+            color: '#000000', fontFamily: 'Arial', align: 'center',
+            stroke: '#ffffff', strokeWidth: 0, opacity: 1, lineHeight: 1.2
+        });
+        this.selectedId = id; this.updatePropsUI(); this.render();
+    },
+
+    addShape() {
+        const id = Date.now();
+        this.elements.push({
+            id, type: 'shape', shapeType: 'rect',
+            x: this.canvas.width/2, y: this.canvas.height/2,
+            w: 100, h: 100, scale: 1.0, rotation: 0, opacity: 1,
+            color: '#2563eb', color2: '#1d4ed8', fillType: 'solid',
+            stroke: '#000000', strokeWidth: 2, borderRadius: 0
+        });
+        this.selectedId = id; this.updatePropsUI(); this.render();
+    },
+
+    cloneSelected() {
+        if (!this.selectedId) return;
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        // Deep copy of the element excluding the 'img' object which will be handled if needed
+        const { img, ...rest } = el;
+        const clone = JSON.parse(JSON.stringify(rest));
+        clone.id = Date.now() + Math.random();
+        clone.x += 10;
+        clone.y += 10;
+        if (el.type === 'icon') clone.img = el.img;
+        
+        this.elements.push(clone);
+        this.selectedId = clone.id;
+        this.updatePropsUI();
+        this.render();
+    },
+
+    handleBgUpload(e) {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+            const img = new Image();
+            img.onload = () => {
+                this.bgImage = img; this.bgThumb = ev.target.result;
+                this.resizeCanvas(img.width, img.height); this.renderBgThumb();
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    },
+
+    renderBgThumb() {
+        const container = document.getElementById('bgAssetContainer');
+        if (!this.bgImage) {
+            container.innerHTML = `<div class="upload-zone" onclick="document.getElementById('bgInput').click()">Carica Sfondo</div>`;
+            return;
+        }
+        container.innerHTML = `<div class="asset-item bg-preview"><img src="${this.bgThumb}"><button class="delete-btn" onclick="app.removeBg()">✕</button></div>`;
+    },
+
+    removeBg() { this.bgImage = null; this.bgThumb = null; this.renderBgThumb(); this.render(); },
+
+    async handleFontUpload(e) {
+        const file = e.target.files[0]; if (!file) return;
+        const fontName = file.name.split('.')[0].replace(/\s/g, '-');
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const data = ev.target.result;
+            await this.registerFont(fontName, data);
+            this.customFonts.push({ name: fontName, data: data });
+            this.fonts.push(fontName);
+            this.renderFontsList();
+            this.updatePropsUI();
+        };
+        reader.readAsDataURL(file);
+    },
+
+    async registerFont(name, data) {
+        const fontFace = new FontFace(name, `url(${data})`);
+        try {
+            const loaded = await fontFace.load();
+            document.fonts.add(loaded);
+        } catch (err) { console.error("Errore caricamento font:", err); }
+    },
+
+    renderFontsList() {
+        const container = document.getElementById('customFontsList');
+        if(!container) return;
+        container.innerHTML = this.customFonts.map(f => `
+            <div class="font-item">
+                ${f.name}
+                <button class="font-delete-btn" onclick="app.removeFont('${f.name}')">✕</button>
+            </div>
+        `).join('');
+    },
+
+    removeFont(name) {
+        this.customFonts = this.customFonts.filter(f => f.name !== name);
+        this.fonts = this.fonts.filter(f => f !== name);
+        this.renderFontsList();
+        this.updatePropsUI();
+        this.render();
+    },
+
+    handleIconLibrary(event) {
+        const files = Array.from(event.target.files);
+        files.forEach(file => {
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => {
+                    this.icons.push({ id: Date.now() + Math.random(), src: ev.target.result, img });
+                    this.renderLibrary();
+                };
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+    },
+
+    renderLibrary() {
+        const container = document.getElementById('iconLibrary'); if(!container) return;
+        container.innerHTML = this.icons.map(icon => `
+            <div class="asset-item" onclick="app.addIconToCanvas('${icon.id}')">
+                <img src="${icon.src}"><button class="delete-btn" onclick="event.stopPropagation(); app.removeLibraryIcon('${icon.id}')">✕</button>
+            </div>`).join('');
+    },
+
+    removeLibraryIcon(id) { this.icons = this.icons.filter(i => i.id != id); this.renderLibrary(); },
+
+    addIconToCanvas(id) {
+        const icon = this.icons.find(i => i.id == id);
+        const elId = Date.now();
+        this.elements.push({
+            id: elId, type: 'icon', img: icon.img, src: icon.src,
+            x: this.canvas.width/2, y: this.canvas.height/2,
+            w: icon.img.width, h: icon.img.height, scale: 1.0, rotation: 0, opacity: 1
+        });
+        this.selectedId = elId; this.updatePropsUI(); this.render();
+    },
+
+    moveLayer(dir) {
+        if (!this.selectedId) return;
+        const index = this.elements.findIndex(i => i.id === this.selectedId);
+        if (dir === 'up' && index < this.elements.length - 1) {
+            [this.elements[index], this.elements[index + 1]] = [this.elements[index + 1], this.elements[index]];
+        } else if (dir === 'down' && index > 0) {
+            [this.elements[index], this.elements[index - 1]] = [this.elements[index - 1], this.elements[index]];
+        }
+        this.render();
+    },
+
+    updateCoordsOnly() {
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        const ix = document.getElementById('inX');
+        const iy = document.getElementById('inY');
+        if(ix) ix.value = Math.round(el.x);
+        if(iy) iy.value = Math.round(el.y);
+    },
+
+    updatePropsUI() {
+        const el = this.elements.find(i => i.id === this.selectedId);
+        const container = document.getElementById('propsContainer');
+        if (!el) {
+            container.innerHTML = `<div class="empty-msg">Seleziona un elemento</div>`;
+            return;
+        }
+
+        let html = `
+            <div class="panel-section">
+                <h3>Magnetismo Griglia</h3>
+                <div class="switch-container">
+                    <label>Attiva Griglia Magnetica</label>
+                    <label class="switch">
+                        <input type="checkbox" ${this.showGrid ? 'checked' : ''} onchange="app.showGrid = this.checked; app.render()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                <label>Dimensione Griglia (px)</label>
+                <input type="number" value="${this.gridSize}" onblur="app.gridSize = parseInt(this.value) || 10; app.render()">
+            </div>
+
+            <div class="panel-section">
+                <h3>Trasformazione</h3>
+                <label>Posizione X, Y</label>
+                <div class="flex-row">
+                    <input type="number" id="inX" value="${Math.round(el.x)}" onblur="app.setProp('x', this.value)">
+                    <input type="number" id="inY" value="${Math.round(el.y)}" onblur="app.setProp('y', this.value)">
+                </div>
+                <div class="shortcut-hint">Sposta con frecce (Shift per +10px)</div>
+
+                <label style="margin-top:12px">Scala</label>
+                <div class="control-group">
+                    <input type="range" id="scaleSlider" min="0.01" max="5" step="0.01" value="${el.scale}" oninput="app.onSliderUpdate('scale', this.value)">
+                    <input type="number" id="scaleNum" value="${el.scale}" step="0.01" onblur="app.onNumberBlur('scale', this.value)">
+                </div>
+                <label>Rotazione (°)</label>
+                <div class="control-group">
+                    <input type="range" id="rotationSlider" min="0" max="360" value="${el.rotation}" oninput="app.onSliderUpdate('rotation', this.value)">
+                    <input type="number" id="rotationNum" value="${Math.round(el.rotation)}" onblur="app.onNumberBlur('rotation', this.value)">
+                </div>
+                <label>Opacità</label>
+                <div class="control-group">
+                    <input type="range" id="opacitySlider" min="0" max="1" step="0.01" value="${el.opacity || 1}" oninput="app.onSliderUpdate('opacity', this.value)">
+                    <input type="number" id="opacityNum" value="${el.opacity || 1}" step="0.01" onblur="app.onNumberBlur('opacity', this.value)">
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <h3>Ordinamento</h3>
+                <div class="flex-row">
+                    <button class="btn" style="flex:1" onclick="app.moveLayer('up')">Porta Avanti</button>
+                    <button class="btn" style="flex:1" onclick="app.moveLayer('down')">Porta Indietro</button>
+                </div>
+            </div>
+        `;
+
+        if (el.type === 'text') {
+            html += `
+                <div class="panel-section">
+                    <h3>Proprietà Testo</h3>
+                    <textarea onblur="app.setProp('text', this.value)">${el.text}</textarea>
+                    <label>Font</label>
+                    <select onchange="app.setProp('fontFamily', this.value)">
+                        ${this.fonts.map(f => `<option ${f === el.fontFamily ? 'selected' : ''}>${f}</option>`).join('')}
+                    </select>
+                    <label>Allineamento</label>
+                    <select onchange="app.setProp('align', this.value)">
+                        <option value="left" ${el.align === 'left' ? 'selected' : ''}>Sinistra</option>
+                        <option value="center" ${el.align === 'center' ? 'selected' : ''}>Centro</option>
+                        <option value="right" ${el.align === 'right' ? 'selected' : ''}>Destra</option>
+                    </select>
+                    <label>Interlinea</label>
+                    <input type="number" value="${el.lineHeight}" step="0.1" onblur="app.setProp('lineHeight', this.value)">
+                    <label>Colore Riempimento</label>
+                    <input type="color" value="${el.color}" oninput="app.setProp('color', this.value)">
+                    <label>Colore Contorno</label>
+                    <input type="color" value="${el.stroke}" oninput="app.setProp('stroke', this.value)">
+                    <label>Spessore Contorno</label>
+                    <input type="number" value="${el.strokeWidth}" onblur="app.setProp('strokeWidth', this.value)">
+                </div>
+            `;
+        } else if (el.type === 'shape') {
+            html += `
+                <div class="panel-section">
+                    <h3>Proprietà Forma</h3>
+                    <label>Tipo Forma</label>
+                    <select onchange="app.setProp('shapeType', this.value); app.updatePropsUI()">
+                        <option value="rect" ${el.shapeType === 'rect' ? 'selected' : ''}>Quadrato</option>
+                        <option value="circle" ${el.shapeType === 'circle' ? 'selected' : ''}>Cerchio</option>
+                        <option value="line" ${el.shapeType === 'line' ? 'selected' : ''}>Linea</option>
+                    </select>
+                    <label>Dimensioni (W x H)</label>
+                    <div class="flex-row">
+                        <input type="number" value="${el.w}" onblur="app.setProp('w', this.value)">
+                        <input type="number" value="${el.h}" onblur="app.setProp('h', this.value)">
+                    </div>
+                    ${el.shapeType === 'rect' ? `
+                        <label>Smussatura Angoli</label>
+                        <div class="control-group">
+                            <input type="range" id="borderRadiusSlider" min="0" max="50" value="${el.borderRadius}" oninput="app.onSliderUpdate('borderRadius', this.value)">
+                            <input type="number" id="borderRadiusNum" value="${el.borderRadius}" onblur="app.onNumberBlur('borderRadius', this.value)">
+                        </div>
+                    ` : ''}
+                    <label>Tipo Riempimento</label>
+                    <select onchange="app.setProp('fillType', this.value); app.updatePropsUI()">
+                        <option value="solid" ${el.fillType === 'solid' ? 'selected' : ''}>Solido</option>
+                        <option value="gradient" ${el.fillType === 'gradient' ? 'selected' : ''}>Sfumato</option>
+                        <option value="none" ${el.fillType === 'none' ? 'selected' : ''}>Nessuno</option>
+                    </select>
+                    ${el.fillType !== 'none' ? `
+                        <label>Colore ${el.fillType === 'gradient' ? 'Principale' : ''}</label>
+                        <input type="color" value="${el.color}" oninput="app.setProp('color', this.value)">
+                        ${el.fillType === 'gradient' ? `<input type="color" value="${el.color2 || '#ffffff'}" oninput="app.setProp('color2', this.value)">` : ''}
+                    ` : ''}
+                    <label>Colore Linea</label>
+                    <input type="color" value="${el.stroke}" oninput="app.setProp('stroke', this.value)">
+                    <label>Spessore Linea</label>
+                    <input type="number" value="${el.strokeWidth}" onblur="app.setProp('strokeWidth', this.value)">
+                </div>
+            `;
+        }
+        html += `
+            <div class="panel-section">
+                <div class="flex-row">
+                    <button class="btn btn-primary" style="flex:1" onclick="app.cloneSelected()">Clona</button>
+                    <button class="btn btn-danger" style="flex:1" onclick="app.deleteSelected()">Elimina</button>
+                </div>
+                <div class="shortcut-hint" style="text-align:center; margin-top:8px">Scorciatoia: Ctrl + D per clonare</div>
+            </div>`;
+        container.innerHTML = html;
+    },
+
+    onSliderUpdate(prop, val) {
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        const numVal = parseFloat(val);
+        el[prop] = numVal;
+        const nEl = document.getElementById(prop + 'Num');
+        if (nEl) nEl.value = numVal;
+        this.render();
+    },
+
+    onNumberBlur(prop, val) {
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        const numVal = parseFloat(val);
+        if (isNaN(numVal)) { this.updatePropsUI(); return; }
+        el[prop] = numVal;
+        const sEl = document.getElementById(prop + 'Slider');
+        if (sEl) sEl.value = numVal;
+        this.render();
+    },
+
+    setProp(prop, val) {
+        const el = this.elements.find(i => i.id === this.selectedId);
+        if (!el) return;
+        el[prop] = (isNaN(val) || prop === 'text' || prop === 'fontFamily' || prop === 'align' || prop === 'shapeType' || prop === 'fillType' || (typeof val === 'string' && val.includes('#'))) ? val : parseFloat(val);
+        this.render();
+    },
+
+    deleteSelected() {
+        this.elements = this.elements.filter(i => i.id !== this.selectedId);
+        this.selectedId = null; this.updatePropsUI(); this.render();
+    },
+
+    exportImage(fmt) {
+    const DPI = 300;
+    const BASE_DPI = 96;
+    const scale = DPI / BASE_DPI;
+
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = this.canvas.width * scale;
+    exportCanvas.height = this.canvas.height * scale;
+
+    const ctx = exportCanvas.getContext('2d');
+
+    // sfondo
+    if (this.bgImage) {
+        ctx.drawImage(
+            this.bgImage,
+            0, 0,
+            exportCanvas.width,
+            exportCanvas.height
+        );
+    } else {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
+    }
+
+    this.elements.forEach(el => {
+        ctx.save();
+
+        ctx.translate(el.x * scale, el.y * scale);
+        ctx.rotate(el.rotation * Math.PI / 180);
+        ctx.globalAlpha = el.opacity ?? 1;
+
+        if (el.type === 'text') {
+            this.drawTextScaled(ctx, el, scale);
+        }
+
+        else if (el.type === 'icon') {
+            const w = el.w * el.scale * scale;
+            const h = el.h * el.scale * scale;
+            ctx.drawImage(el.img, -w / 2, -h / 2, w, h);
+        }
+
+        else if (el.type === 'shape') {
+            this.drawShapeScaled(ctx, el, scale);
+        }
+
+        ctx.restore();
+    });
+
+    const mime = fmt === 'jpg' ? 'image/jpeg' : 'image/png';
+    const link = document.createElement('a');
+    link.download = `export_300dpi.${fmt}`;
+    link.href = exportCanvas.toDataURL(mime, fmt === 'jpg' ? 1.0 : undefined);
+    link.click();
+},
+
+    saveProject() {
+        const data = {
+            bg: this.bgImage ? this.bgThumb : null,
+            canvasW: this.canvas.width, canvasH: this.canvas.height,
+            elements: this.elements.map(({img, ...rest}) => rest),
+            icons: this.icons.map(({img, ...rest}) => rest),
+            customFonts: this.customFonts,
+            showGrid: this.showGrid, gridSize: this.gridSize
+        };
+        const blob = new Blob([JSON.stringify(data)], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = 'project.json'; a.click();
+    },
+
+    async loadProject(e) {
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = async (ev) => {
+            const data = JSON.parse(ev.target.result);
+            
+            // Ripristino font prima di caricare gli elementi
+            this.customFonts = data.customFonts || [];
+            this.fonts = ['Arial', 'Verdana', 'Georgia', 'Courier New', 'Inter', 'Serif', 'Sans-serif'];
+            for(let f of this.customFonts) {
+                await this.registerFont(f.name, f.data);
+                this.fonts.push(f.name);
+            }
+            this.renderFontsList();
+
+            if(data.bg) {
+                this.bgThumb = data.bg; this.bgImage = await this.loadImage(data.bg);
+                this.resizeCanvas(data.canvasW, data.canvasH); this.renderBgThumb();
+            }
+            this.showGrid = data.showGrid || false; this.gridSize = data.gridSize || 20;
+            this.icons = [];
+            for(let icon of (data.icons || [])) { icon.img = await this.loadImage(icon.src); this.icons.push(icon); }
+            this.renderLibrary();
+            this.elements = [];
+            for(let el of data.elements) { if(el.type === 'icon') el.img = await this.loadImage(el.src); this.elements.push(el); }
+            this.updatePropsUI();
+            this.render();
+        };
+        reader.readAsText(file);
+    },
+
+    loadImage(src) { return new Promise(res => { const img = new Image(); img.onload = () => res(img); img.src = src; }); }
+};
+
+window.onload = () => app.init();
+</script>
+</body>
+</html>
