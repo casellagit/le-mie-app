@@ -97,7 +97,7 @@ async function rpc(d,method,params){
   clearTimeout(idle[d.id]);
   if(!g.connected)g=await g.connect();
   var sv=await g.getPrimaryService(SV);
-  var dc=await sv.getCharacteristic(DC),tx=await sv.getCharacteristic(TX),rx=await sv.getCharacteristic(RX);
+  var dc=await sv.getCharacteristic(DC),tx=await sv.getCharacteristic(RX),rx=await sv.getCharacteristic(TX);
   var body=new TextEncoder().encode(JSON.stringify({id:1,method:method,params:params}));
   var l=new DataView(new ArrayBuffer(4));l.setUint32(0,body.length);
   var np=null;
