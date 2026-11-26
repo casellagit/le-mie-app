@@ -194,7 +194,7 @@ document.addEventListener("click",function(e){
   if(t.dataset.b){var b=st.buttons.find(function(x){return x.id===t.dataset.b});return editing?openEd(b):run(b)}
   if(t.dataset.c){draft.color=t.dataset.c;document.querySelectorAll(".sw button").forEach(function(x){x.classList.toggle("on",x===t)});return}
   if(t.dataset.r){var d=dev(t.dataset.r),n=prompt("Nuovo nome",d.label);if(n&&n.trim()){d.label=n.trim();save();render()}return}
-  if(t.dataset.x){var d2=dev(t.dataset.x);if(confirm("Rimuovere "+d2.label+"? Verrà tolto anche dai pulsanti.")){st.devices=st.devices.filter(function(x){return x.id!==d2.id});st.buttons.forEach(function(b){b.actions=b.actions.filter(function(a){return a.deviceId!==d2.id})});save();render()}return}
+  if(t.dataset.x){var d2=dev(t.dataset.x);if(confirm("Rimuovere "+d2.label+"? Verrà tolto dai pulsanti e verranno eliminati quelli che restano senza Shelly.")){st.devices=st.devices.filter(function(x){return x.id!==d2.id});st.buttons.forEach(function(b){b.actions=b.actions.filter(function(a){return a.deviceId!==d2.id})});st.buttons=st.buttons.filter(function(b){return b.actions.length});save();render()}return}
   if(t.id==="eC")return $("#dlg").close();
   if(t.id==="eD"){st.buttons=st.buttons.filter(function(b){return b.id!==draft.id});save();render();return $("#dlg").close()}
   if(t.id==="eS"){
