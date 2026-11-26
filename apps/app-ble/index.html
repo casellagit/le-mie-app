@@ -80,6 +80,18 @@ async function getBt(d){
   var b=await navigator.bluetooth.requestDevice({filters:[{name:d.name}],optionalServices:[SV]});
   live[d.id]=b;d.btId=b.id;save();return b;
 }
+function pr(c){return Object.keys(c.properties).filter(function(k){return c.properties[k]}).join(",")}
+async function wr(c,v,nm){
+  var p=c.properties,f=[],err;
+  if(p.write)f.push("writeValueWithResponse");
+  if(p.writeWithoutResponse)f.push("writeValueWithoutResponse");
+  if(!f.length)f=["writeValueWithResponse","writeValueWithoutResponse"];
+  for(var i=0;i<f.length;i++){try{return await c[f[i]](v)}catch(e){err=e}}
+  throw new Error(nm+": "+err.message+" (propriet\u00e0: "+pr(c)+")");
+}
+async function rd(c,nm){
+  try{return await c.readValue()}catch(e){throw new Error(nm+": "+e.message+" (propriet\u00e0: "+pr(c)+")")}
+}
 async function rpc(d,method,params){
   var bt=await getBt(d),g=bt.gatt;
   clearTimeout(idle[d.id]);
@@ -88,10 +100,10 @@ async function rpc(d,method,params){
   var dc=await sv.getCharacteristic(DC),tx=await sv.getCharacteristic(TX),rx=await sv.getCharacteristic(RX);
   var body=new TextEncoder().encode(JSON.stringify({id:1,method:method,params:params}));
   var l=new DataView(new ArrayBuffer(4));l.setUint32(0,body.length);
-  await rx.writeValueWithResponse(l);
-  for(var i=0;i<body.length;i+=200)await dc.writeValueWithResponse(body.slice(i,i+200));
-  var n=(await tx.readValue()).getUint32(0),parts=[],got=0;
-  while(got<n){var v=await dc.readValue();if(!v.byteLength)throw new Error("Risposta vuota");parts.push(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)));got+=v.byteLength}
+  await wr(rx,l,"rx_ctl");
+  for(var i=0;i<body.length;i+=100)await wr(dc,body.slice(i,i+100),"data");
+  var n=(await rd(tx,"tx_ctl")).getUint32(0),parts=[],got=0;
+  while(got<n){var v=await rd(dc,"data");if(!v.byteLength)throw new Error("Risposta vuota");parts.push(new Uint8Array(v.buffer.slice(v.byteOffset,v.byteOffset+v.byteLength)));got+=v.byteLength}
   var all=new Uint8Array(got),o=0;parts.forEach(function(p){all.set(p,o);o+=p.length});
   var r=JSON.parse(new TextDecoder().decode(all));
   idle[d.id]=setTimeout(function(){try{bt.gatt.disconnect()}catch(e){}},20000);
