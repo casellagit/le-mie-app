@@ -132,7 +132,7 @@
   .range input { width: 100%; accent-color: var(--brass); margin-top: 6px; }
 
 
-  .pads { display: flex; gap: 18px; align-items: center; margin-top: 14px; }
+  .pads { display: flex; gap: 14px; align-items: center; margin-top: 14px; }
   .dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; }
   .dpad .up { grid-area: 1 / 2; } .dpad .left { grid-area: 2 / 1; } .dpad .mid { grid-area: 2 / 2; }
   .dpad .right { grid-area: 2 / 3; } .dpad .down { grid-area: 3 / 2; }
@@ -144,8 +144,11 @@
   .pad:active { background: var(--brass); color: #1b1608; }
   .pad.mid { background: transparent; box-shadow: inset 0 0 0 1px var(--slate-3); }
   .pad svg { width: 20px; height: 20px; }
-  .zoomcol { display: flex; flex-direction: column; gap: 4px; }
+  .zoomcol { display: grid; grid-template-columns: repeat(2, 44px); gap: 4px; }
   .zoomcol .pad { width: 44px; height: 44px; }
+  .pad.save { width: 100%; height: auto; padding: 12px; font-size: 14px; font-weight: 600; background: var(--brass); color: #1b1608; }
+  .pad.save:hover { filter: brightness(1.08); background: var(--brass); }
+  .pad.save:disabled { opacity: .6; cursor: progress; }
   .tools-label { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-dim); }
 
   :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
@@ -250,6 +253,8 @@
         <div class="zoomcol">
           <button class="pad" data-act="zin" aria-label="Ingrandisci la fiamma">+</button>
           <button class="pad" data-act="zout" aria-label="Riduci la fiamma">−</button>
+          <button class="pad" data-rot="-90" aria-label="Ruota la fiamma di 90 gradi a sinistra" title="Ruota di 90° a sinistra"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 10a5.5 5.5 0 1 0 1.8-4.1"/><path d="M4.5 3.5v3.8h3.8"/></svg></button>
+          <button class="pad" data-rot="90" aria-label="Ruota la fiamma di 90 gradi a destra" title="Ruota di 90° a destra"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 10a5.5 5.5 0 1 1-1.8-4.1"/><path d="M15.5 3.5v3.8h-3.8"/></svg></button>
         </div>
       </div>
       <label class="switch" style="margin-top:12px"><span>Capovolgi in verticale</span><input type="checkbox" id="flameFlip" checked></label>
@@ -261,6 +266,16 @@
   </section>
 
   <section>
+    <h2>Salva</h2>
+    <button class="btn" id="saveGlb" style="width:100%" disabled>Salva come nuovo GLB</button>
+    <select id="exportFlame" aria-label="Come salvare la fiamma" hidden>
+      <option value="still">Fiamma come immagine fissa</option>
+      <option value="off">Senza fiamma</option>
+    </select>
+    <p class="note">I colori scelti finiscono nel nuovo file. Un GLB non può contenere video: la fiamma viene salvata come immagine ferma, nella posizione e nella misura che hai impostato, con il fotogramma del momento del salvataggio.</p>
+  </section>
+
+  <section>
     <h2>Vista</h2>
     <label class="switch"><span>Rotazione automatica</span><input type="checkbox" id="autoRotate"></label>
     <label class="switch"><span>Ombra a terra</span><input type="checkbox" id="shadowToggle" checked></label>
@@ -268,6 +283,12 @@
       <input type="range" id="exposure" min="0.3" max="2" step="0.05" value="1">
     </label>
     <button class="linkbtn" id="resetCam">Riporta la camera al centro</button>
+  </section>
+<section>
+    <h2>Salva</h2>
+    <button class="pad save" id="saveGlb">Salva come nuovo GLB</button>
+    <label class="switch" style="margin-top:10px"><span>Includi la fiamma (immagine fissa)</span><input type="checkbox" id="exportFlame" checked></label>
+    <p class="note">Nel file finiscono i colori scelti e i nomi dei materiali. Un GLB non può contenere video: la fiamma viene salvata come immagine ferma, nella posizione che hai impostato.</p>
   </section>
 </aside>
 
@@ -353,7 +374,9 @@ async function showEntry(i) {
     if (String.fromCharCode(...head) !== "glTF") {
       failLoad(file.name, head[0] === 0x7b
         ? "Questo è un .gltf (testo), non un .glb. Esporta il modello in formato GLB."
-        : "Il file non è un GLB valido.");
+        : file.size === 0
+          ? "Il file risulta vuoto (0 byte): copialo sul disco e riprova."
+          : `Il file non è un GLB valido (${file.size} byte, inizia con ${[...head].map((b) => b.toString(16).padStart(2, "0")).join(" ")}).`);
       return;
     }
     const buf = await file.arrayBuffer();
@@ -423,10 +446,10 @@ $("fileInput").onchange = (ev) => {
 function addFiles(files) {
   const glbs = files.filter((f) => /\.glb$/i.test(f.name));
   if (!glbs.length) { toast("Servono file in formato .glb"); return; }
-  const first = entries.length;
-  glbs.forEach((f) => entries.push({ label: prettyName(f.name), getFile: async () => f }));
+  const added = glbs.map((f) => ({ label: prettyName(f.name), getFile: async () => f }));
+  entries.push(...added);
   fillSelect();
-  const idx = entries.findIndex((e) => e.label === prettyName(glbs[0].name));
+  const idx = entries.indexOf(added[0]);
   $("modelSelect").value = idx;
   $("folderNote").className = "note";
   $("folderNote").textContent = `${entries.length} modelli in elenco.`;
@@ -460,15 +483,27 @@ addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; doc
 addEventListener("dragover", (e) => e.preventDefault());
 addEventListener("drop", async (e) => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
-  // Va tutto letto subito: dopo un "await" il browser svuota i dati del trascinamento.
-  const files = [...e.dataTransfer.files];
-  const handlePromises = [...e.dataTransfer.items]
-    .filter((it) => it.kind === "file" && it.getAsFileSystemHandle)
-    .map((it) => it.getAsFileSystemHandle());
-  try {
-    const dir = (await Promise.all(handlePromises)).find((h) => h && h.kind === "directory");
-    if (dir) { await openFolderHandle(dir); return; }
-  } catch (err) { /* si passa ai file */ }
+  // Tutto va richiesto subito: dopo un "await" il browser svuota i dati del trascinamento.
+  const dropped = [...e.dataTransfer.items].filter((it) => it.kind === "file").map((it) => {
+    const file = it.getAsFile();
+    return {
+      file,
+      buf: file ? file.arrayBuffer().catch(() => null) : null,
+      handle: it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : null,
+    };
+  });
+  const files = [];
+  for (const d of dropped) {
+    const h = await d.handle;
+    if (h && h.kind === "directory") { await openFolderHandle(h); return; }
+    let f = null;
+    if (h && h.kind === "file") { try { f = await h.getFile(); } catch (err) {} }
+    if (!f || !f.size) {                       // ripiego sui byte letti al momento del rilascio
+      const buf = await d.buf;
+      if (buf && buf.byteLength && d.file) f = new File([buf], d.file.name);
+    }
+    if (f) files.push(f);
+  }
   addFiles(files);
 });
 
@@ -528,7 +563,7 @@ $("resetColor").onclick = () => {
    Fiamma: il video viene disegnato su un canvas, il nero diventa
    trasparente e il canvas fa da texture del materiale.
 ------------------------------------------------------------------- */
-const DEFAULT_FLAME = { x: 0, y: 0, z: 1, flip: true, thr: 8 };
+const DEFAULT_FLAME = { x: 0, y: 0, z: 1, rot: 0, flip: true, thr: 8 };
 let flames = [];                 // { m, src, st, key, video, tex, canvas, ctx, ... }
 let flameOn = false, flameRaf = 0;
 const videoCache = new Map();
@@ -562,7 +597,10 @@ function renderFlame(f) {
   if (st.flip) { ctx.translate(0, h); ctx.scale(1, -1); }
   ctx.translate(w / 2 + st.x * w, h / 2 + st.y * h);
   ctx.scale(st.z, st.z);
-  ctx.drawImage(v, -w / 2, -h / 2, w, h);
+  ctx.rotate(((st.rot || 0) * Math.PI) / 180);
+  const quarter = Math.abs(((st.rot || 0) / 90) % 2) === 1;      // 90° / 270°: il video ruotato riempie comunque il piano
+  const dw = quarter ? h : w, dh = quarter ? w : h;
+  ctx.drawImage(v, -dw / 2, -dh / 2, dw, dh);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
 
   // il nero diventa trasparente: la trasparenza segue la luminosità del pixel
@@ -662,6 +700,14 @@ function nudge(act) {
   saveFlameState(f);
 }
 
+document.querySelectorAll("[data-rot]").forEach((btn) => {
+  btn.onclick = () => {
+    const f = activeFlame(); if (!f) return;
+    f.st.rot = ((((f.st.rot || 0) + +btn.dataset.rot) % 360) + 360) % 360;
+    saveFlameState(f);
+  };
+});
+
 document.querySelectorAll("[data-act]").forEach((btn) => {
   let t1, t2;
   const stop = () => { clearTimeout(t1); clearInterval(t2); };
@@ -702,11 +748,100 @@ function buildFlame() {
 }
 
 /* ------------------------------------------------------------------
+   Salvataggio in un nuovo GLB
+------------------------------------------------------------------- */
+$("saveGlb").onclick = async () => {
+  if (!viewer.model) return;
+  const btn = $("saveGlb");
+  const base = ((currentLabel.split(" / ").pop()) || "modello") + "-personalizzato";
+  let handle = null;
+  if ("showSaveFilePicker" in window) {          // va chiesto subito, mentre il clic è "fresco"
+    try {
+      handle = await window.showSaveFilePicker({
+        suggestedName: base.replace(/\s+/g, "-") + ".glb",
+        types: [{ description: "Modello 3D (GLB)", accept: { "model/gltf-binary": [".glb"] } }],
+      });
+    } catch (e) { return; }                      // annullato
+  }
+  btn.disabled = true; btn.textContent = "Salvataggio…";
+  const wasOn = flameOn, mode = $("exportFlame").value;
+  try {
+    cancelAnimationFrame(flameRaf);
+    if (flames.length && wasOn) {
+      if (mode === "off") await setFlame(false);
+      else flames.forEach((f) => { if (f.ctx) { renderFlame(f); f.tex.source.update(); } });
+    }
+    const blob = await viewer.exportScene({ binary: true });
+    if (handle) {
+      const w = await handle.createWritable(); await w.write(blob); await w.close();
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = base.replace(/\s+/g, "-") + ".glb";
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    }
+    toast("Nuovo GLB salvato");
+  } catch (err) {
+    console.error(err); toast("Non sono riuscito a salvare il GLB");
+  } finally {
+    btn.disabled = false; btn.textContent = "Salva come nuovo GLB";
+    if (flames.length && wasOn) {
+      if (mode === "off") await setFlame(true);
+      else { flameOn = true; flameRaf = requestAnimationFrame(flameLoop); }
+    }
+  }
+};
+
+/* ------------------------------------------------------------------
+   Salvataggio in un nuovo GLB
+------------------------------------------------------------------- */
+$("saveGlb").onclick = async () => {
+  if (!viewer.model) { toast("Carica prima un modello"); return; }
+  const btn = $("saveGlb"), label = btn.textContent;
+  const base = ((currentLabel.split(" / ").pop() || "modello").trim().replace(/\s+/g, "_")) || "modello";
+  const name = base + "_personalizzato.glb";
+  const wasOn = flameOn;
+  btn.disabled = true;
+  try {
+    // il selettore di salvataggio va aperto subito, mentre il clic è "fresco"
+    let handle = null;
+    if (window.showSaveFilePicker) {
+      try {
+        handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "Modello GLB", accept: { "model/gltf-binary": [".glb"] } }] });
+      } catch (e) { if (e.name === "AbortError") return; throw e; }
+    }
+    btn.textContent = "Salvataggio…";
+    if (flames.length) {
+      const want = $("exportFlame").checked;
+      if (want !== flameOn) await setFlame(want);
+      if (want) await new Promise((r) => setTimeout(r, 400));   // il tempo di disegnare un fotogramma
+    }
+    const blob = await viewer.exportScene({ binary: true });
+    if (handle) {
+      const w = await handle.createWritable(); await w.write(blob); await w.close();
+      toast("Salvato: " + handle.name);
+    } else {
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      toast("Scaricato: " + name);
+    }
+  } catch (err) {
+    console.error(err); toast("Salvataggio non riuscito");
+  } finally {
+    if (flames.length && flameOn !== wasOn) await setFlame(wasOn);
+    btn.disabled = false; btn.textContent = label;
+  }
+};
+
+/* ------------------------------------------------------------------
    Eventi del viewer e controlli vista
 ------------------------------------------------------------------- */
 viewer.addEventListener("load", () => {
   buildMaterials();
   buildFlame();
+  $("saveGlb").disabled = false;
+  $("exportFlame").hidden = !flames.length;
   const n = viewer.model.materials.length;
   $("modelMeta").textContent = `${n} ${n === 1 ? "materiale" : "materiali"}`;
 });
