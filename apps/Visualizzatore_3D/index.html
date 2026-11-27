@@ -732,6 +732,8 @@ async function setFlame(on) {
           alpha: m.alphaMode, ds: m.doubleSided,
           base: [...m.pbrMetallicRoughness.baseColorFactor],
           baseTex: m.pbrMetallicRoughness.baseColorTexture.texture || null,
+          emis: [...(m.emissiveFactor || [0, 0, 0])],
+          emisTex: m.emissiveTexture.texture || null,
         };
         m.setAlphaMode("BLEND");
         try { m.setDoubleSided(true); } catch (e) {}
@@ -744,8 +746,8 @@ async function setFlame(on) {
         console.error(err); toast("Non riesco a leggere il video «" + f.src.replace("./", "") + "»");
       }
     } else if (f.saved) {
-      m.emissiveTexture.setTexture(null);
-      m.setEmissiveFactor([0, 0, 0]);
+      m.emissiveTexture.setTexture(f.saved.emisTex);
+      m.setEmissiveFactor(f.saved.emis);
       m.pbrMetallicRoughness.baseColorTexture.setTexture(f.saved.baseTex);
       m.pbrMetallicRoughness.setBaseColorFactor(f.saved.base);
       m.setAlphaMode(f.saved.alpha);
