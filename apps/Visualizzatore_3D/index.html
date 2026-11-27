@@ -30,8 +30,10 @@
   }
 
   /* ---------- viewer ---------- */
+  :root { --offset: 352px; --sheet: 0px; }
   model-viewer {
-    position: absolute; inset: 0; width: 100%; height: 100%;
+    position: absolute; top: 0; right: 0; left: var(--offset); bottom: var(--sheet);
+    width: auto; height: auto;
     --poster-color: transparent;
     background: transparent;
     outline: none;
@@ -49,7 +51,7 @@
 
   .empty {
     position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
-    text-align: center; color: #3a4349; padding: 0 24px 0 360px;
+    text-align: center; color: #3a4349; padding: 0 24px 0 calc(var(--offset) + 24px);
   }
   .empty strong { display: block; font-size: clamp(22px, 3vw, 38px); letter-spacing: -0.02em; font-weight: 800; }
   .empty span { display: block; margin-top: 10px; font-size: 15px; color: #606a70; }
@@ -64,6 +66,8 @@
 
   /* ---------- panel ---------- */
   .panel {
+    transition: transform .3s ease, opacity .25s ease, visibility 0s linear 0s;
+    overscroll-behavior: contain;
     position: absolute; top: 16px; left: 16px; bottom: 16px; width: 320px; z-index: 10;
     background: linear-gradient(180deg, var(--slate-2), var(--slate));
     border-radius: 24px; padding: 22px 20px; overflow-y: auto;
@@ -71,6 +75,20 @@
     scrollbar-width: thin; scrollbar-color: var(--slate-3) transparent;
   }
   .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .iconbtn {
+    margin-left: auto; flex: none; width: 40px; height: 40px; border-radius: 12px; border: 0; cursor: pointer;
+    background: var(--slate-3); color: var(--ink); display: grid; place-items: center;
+  }
+  .iconbtn:hover { background: #4a585f; }
+  .iconbtn svg, .fab svg { width: 20px; height: 20px; }
+  .fab {
+    position: absolute; top: 16px; left: 16px; z-index: 12; width: 52px; height: 52px; border-radius: 17px; border: 0;
+    background: var(--slate); color: var(--ink); display: none; place-items: center; cursor: pointer;
+    box-shadow: 0 14px 30px -10px rgba(20,25,28,.6);
+  }
+  body.panel-hidden { --offset: 0px; --sheet: 0px; }
+  body.panel-hidden .panel { transform: translateX(calc(-100% - 24px)); opacity: 0; visibility: hidden; pointer-events: none; transition: transform .3s ease, opacity .25s ease, visibility 0s linear .3s; }
+  body.panel-hidden .fab { display: grid; }
   .brand-mark {
     width: 38px; height: 38px; border-radius: 12px; flex: none;
     background: radial-gradient(circle at 50% 85%, #fff2b0 0 12%, var(--ember) 45%, #7a1d00 100%);
@@ -151,17 +169,21 @@
   .pad.save:disabled { opacity: .6; cursor: progress; }
   .tools-label { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-dim); }
 
+  @keyframes nudge { 0%,100% { box-shadow: 0 0 0 0 rgba(210,168,95,0); } 50% { box-shadow: 0 0 0 6px rgba(210,168,95,.55); } }
+  .btn.attention { animation: nudge 1s ease-in-out 4; }
+  @media (prefers-reduced-motion: reduce) { .btn.attention { animation: none; outline: 2px solid var(--brass); } }
+
   :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
   .ar-btn {
     position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
-    margin-left: 168px; padding: 11px 18px; border-radius: 999px; border: 0; cursor: pointer;
+    margin-left: 0; padding: 11px 18px; border-radius: 999px; border: 0; cursor: pointer;
     background: var(--slate); color: var(--ink); font-weight: 600; font-size: 14px;
     box-shadow: 0 10px 24px -8px rgba(0,0,0,.5);
   }
 
   .toast {
-    position: absolute; top: 20px; left: 50%; margin-left: 168px; transform: translate(-50%, -20px);
+    position: absolute; top: 20px; left: 50%; margin-left: 0; transform: translate(-50%, -20px);
     background: var(--slate); color: var(--ink); padding: 10px 18px; border-radius: 999px; font-size: 14px;
     opacity: 0; transition: .3s; z-index: 40; pointer-events: none; box-shadow: 0 10px 24px -8px rgba(0,0,0,.5);
   }
@@ -169,18 +191,28 @@
 
   /* ---------- mobile ---------- */
   @media (max-width: 760px) {
-    .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 46vh; border-radius: 22px 22px 18px 18px; }
-    .stage-title { right: 18px; bottom: auto; top: 16px; max-width: 70vw; }
-    .empty { padding: 0 24px 40vh; }
-    .ar-btn, .toast { margin-left: 0; }
-    .ar-btn { bottom: calc(46vh + 20px); }
+    :root { --offset: 0px; --sheet: 52vh; }
+    @supports (height: 100dvh) { :root { --sheet: 52dvh; } }
+    body.panel-hidden { --sheet: 0px; }
+    .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 52vh; border-radius: 24px; padding: 16px 16px calc(18px + env(safe-area-inset-bottom)); }
+    @supports (height: 100dvh) { .panel { max-height: 52dvh; } }
+    body.panel-hidden .panel { transform: translateY(calc(100% + 24px)); }
+    .fab { top: auto; bottom: calc(18px + env(safe-area-inset-bottom)); left: 16px; }
+    .brand { margin-bottom: 14px; }
+    section { padding: 14px 0; }
+    select { font-size: 16px; }
+    .stage-title { right: 18px; bottom: auto; top: 16px; max-width: 72vw; }
+    .stage-title h1 { font-size: 30px; }
+    .empty { padding: 0 24px 45vh; }
+    body.panel-hidden .empty { padding-bottom: 0; }
+    .ar-btn { bottom: 16px; }
   }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
 
-<model-viewer id="viewer" camera-controls touch-action="pan-y" ar
+<model-viewer id="viewer" camera-controls touch-action="none" ar
   shadow-intensity="1" shadow-softness="1" exposure="1" environment-image="neutral"
   interaction-prompt="none" alt="Modello 3D">
   <button slot="ar-button" class="ar-btn">Vedi nella tua stanza</button>
@@ -200,10 +232,13 @@
 <div class="dropzone">Rilascia il file .glb</div>
 <div class="toast" id="toast"></div>
 
+<button class="fab" id="panelOpen" aria-label="Mostra il menu" title="Mostra il menu"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h8M15 5h2M3 10h2M9 10h8M3 15h10M17 15h0"/><circle cx="13" cy="5" r="1.8"/><circle cx="7" cy="10" r="1.8"/><circle cx="15" cy="15" r="1.8"/></svg></button>
+
 <aside class="panel">
   <div class="brand">
     <div class="brand-mark"></div>
     <div><b>Showroom 3D</b><small>Il tuo catalogo in tre dimensioni</small></div>
+    <button class="iconbtn" id="panelClose" aria-label="Nascondi il menu" title="Nascondi il menu"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l10 10M15 5L5 15"/></svg></button>
   </div>
 
   <section>
@@ -284,12 +319,6 @@
     </label>
     <button class="linkbtn" id="resetCam">Riporta la camera al centro</button>
   </section>
-<section>
-    <h2>Salva</h2>
-    <button class="pad save" id="saveGlb">Salva come nuovo GLB</button>
-    <label class="switch" style="margin-top:10px"><span>Includi la fiamma (immagine fissa)</span><input type="checkbox" id="exportFlame" checked></label>
-    <p class="note">Nel file finiscono i colori scelti e i nomi dei materiali. Un GLB non può contenere video: la fiamma viene salvata come immagine ferma, nella posizione che hai impostato.</p>
-  </section>
 </aside>
 
 <script type="module">
@@ -309,6 +338,16 @@ const $ = (id) => document.getElementById(id);
 const viewer = $("viewer");
 
 /* ------------------------------------------------------------------
+   Menu laterale (si nasconde per vedere meglio il prodotto)
+------------------------------------------------------------------- */
+const isPhone = () => matchMedia("(max-width: 760px)").matches;
+let closeAfterLoad = false;
+function setPanel(open) { document.body.classList.toggle("panel-hidden", !open); }
+$("panelClose").onclick = () => setPanel(false);
+$("panelOpen").onclick = () => setPanel(true);
+addEventListener("keydown", (e) => { if (e.key === "Escape") setPanel(document.body.classList.contains("panel-hidden")); });
+
+/* ------------------------------------------------------------------
    Utilità
 ------------------------------------------------------------------- */
 const hasDirPicker = "showDirectoryPicker" in window;
@@ -320,10 +359,11 @@ const FLAME_VIDEOS = [
 const flameSrcFor = (name) => (FLAME_VIDEOS.find((f) => f.rx.test((name || "").trim())) || {}).src;
 const isFlame = (m) => !!flameSrcFor(m.name);
 let toastTimer;
-function toast(msg) {
+function toast(msg, ms = 2600) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
-  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), ms);
 }
+function attention(el) { el.classList.remove("attention"); void el.offsetWidth; el.classList.add("attention"); }
 const prettyName = (n) => n.replace(/\.(glb|gltf)$/i, "").replace(/[_-]+/g, " ");
 
 /* Memorizza l'ultima cartella scelta (solo Chrome/Edge) */
@@ -367,6 +407,7 @@ function failLoad(name, msg) {
 async function showEntry(i) {
   const e = entries[i]; if (!e) return;
   currentLabel = e.label;
+  closeAfterLoad = isPhone();           // su telefono, dopo la scelta il menu si chiude e si vede il prodotto
   let file;
   try {
     file = await e.getFile();
@@ -444,14 +485,21 @@ $("fileInput").onchange = (ev) => {
 };
 
 async function addFiles(files) {
-  const glbs = [];
+  const glbs = [], empty = [];
   for (const f of files) {
     if (!f) continue;
+    if (f.size === 0) { empty.push(f); continue; }
     let ok = /\.glb$/i.test(f.name);
     if (!ok) {
       try { ok = String.fromCharCode(...new Uint8Array(await f.slice(0, 4).arrayBuffer())) === "glTF"; } catch (e) {}
     }
     if (ok) glbs.push(f);
+  }
+  if (!glbs.length && empty.length) {
+    const msg = `Il browser ha ricevuto «${empty[0].name}» vuoto (0 byte). Succede trascinando dalla barra dei download, da cartelle cloud o da archivi: usa «Apri file».`;
+    $("modelMeta").textContent = "File non leggibile dal trascinamento";
+    toast(msg, 8000); attention($("pickFile"));
+    return;
   }
   if (!glbs.length) {
     const got = files.filter(Boolean).map((f) => `${f.name || "senza nome"} (${f.size} byte)`).join(", ");
@@ -503,11 +551,35 @@ addEventListener("drop", async (e) => {
   const dropped = (fromList.length ? fromList : fromItems);
   const copies = dropped.map((f) =>                       // copia in memoria, così il file resta leggibile
     f.arrayBuffer().then((buf) => new File([buf], f.name, { type: f.type })).catch(() => f));
+  const entryFiles = items.map((it) => {                 // API più vecchia: a volte legge dove le altre danno 0 byte
+    const en = it.webkitGetAsEntry ? it.webkitGetAsEntry() : null;
+    return new Promise((res) => (en && en.isFile ? en.file(res, () => res(null)) : res(null)));
+  });
   const handles = items.map((it) => (it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : null));
 
   const dir = (await Promise.all(handles)).find((h) => h && h.kind === "directory");
   if (dir) { await openFolderHandle(dir); return; }
-  addFiles(await Promise.all(copies));
+  const ready = await Promise.all(copies.map(async (pending, i) => {
+    let c = await pending;
+    if (c.size === 0) {                                   // seconda strada: il "puntatore" al file
+      try {
+        const h = await handles[i];
+        if (h && h.kind === "file") {
+          const hf = await h.getFile();
+          if (hf.size) c = new File([await hf.arrayBuffer()], hf.name, { type: hf.type });
+        }
+      } catch (err) { /* resta vuoto */ }
+    }
+    if (c.size === 0) {                                   // terza strada
+      try {
+        const ef = await entryFiles[i];
+        if (ef && ef.size) c = new File([await ef.arrayBuffer()], ef.name, { type: ef.type });
+      } catch (err) { /* resta vuoto */ }
+    }
+    return c;
+  }));
+  console.log("drop:", [...(dt.types || [])], ready.map((f) => `${f.name} ${f.size}`));
+  addFiles(ready);
 });
 
 /* ------------------------------------------------------------------
@@ -796,51 +868,10 @@ $("saveGlb").onclick = async () => {
 };
 
 /* ------------------------------------------------------------------
-   Salvataggio in un nuovo GLB
-------------------------------------------------------------------- */
-$("saveGlb").onclick = async () => {
-  if (!viewer.model) { toast("Carica prima un modello"); return; }
-  const btn = $("saveGlb"), label = btn.textContent;
-  const base = ((currentLabel.split(" / ").pop() || "modello").trim().replace(/\s+/g, "_")) || "modello";
-  const name = base + "_personalizzato.glb";
-  const wasOn = flameOn;
-  btn.disabled = true;
-  try {
-    // il selettore di salvataggio va aperto subito, mentre il clic è "fresco"
-    let handle = null;
-    if (window.showSaveFilePicker) {
-      try {
-        handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: "Modello GLB", accept: { "model/gltf-binary": [".glb"] } }] });
-      } catch (e) { if (e.name === "AbortError") return; throw e; }
-    }
-    btn.textContent = "Salvataggio…";
-    if (flames.length) {
-      const want = $("exportFlame").checked;
-      if (want !== flameOn) await setFlame(want);
-      if (want) await new Promise((r) => setTimeout(r, 400));   // il tempo di disegnare un fotogramma
-    }
-    const blob = await viewer.exportScene({ binary: true });
-    if (handle) {
-      const w = await handle.createWritable(); await w.write(blob); await w.close();
-      toast("Salvato: " + handle.name);
-    } else {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-      toast("Scaricato: " + name);
-    }
-  } catch (err) {
-    console.error(err); toast("Salvataggio non riuscito");
-  } finally {
-    if (flames.length && flameOn !== wasOn) await setFlame(wasOn);
-    btn.disabled = false; btn.textContent = label;
-  }
-};
-
-/* ------------------------------------------------------------------
    Eventi del viewer e controlli vista
 ------------------------------------------------------------------- */
 viewer.addEventListener("load", () => {
+  if (closeAfterLoad) { setPanel(false); closeAfterLoad = false; }
   buildMaterials();
   buildFlame();
   $("saveGlb").disabled = false;
