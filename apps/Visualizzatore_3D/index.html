@@ -443,10 +443,22 @@ $("fileInput").onchange = (ev) => {
   addFiles([...ev.target.files]); ev.target.value = "";
 };
 
-function addFiles(files) {
-  const glbs = files.filter((f) => /\.glb$/i.test(f.name));
-  if (!glbs.length) { toast("Servono file in formato .glb"); return; }
-  const added = glbs.map((f) => ({ label: prettyName(f.name), getFile: async () => f }));
+async function addFiles(files) {
+  const glbs = [];
+  for (const f of files) {
+    if (!f) continue;
+    let ok = /\.glb$/i.test(f.name);
+    if (!ok) {
+      try { ok = String.fromCharCode(...new Uint8Array(await f.slice(0, 4).arrayBuffer())) === "glTF"; } catch (e) {}
+    }
+    if (ok) glbs.push(f);
+  }
+  if (!glbs.length) {
+    const got = files.filter(Boolean).map((f) => `${f.name || "senza nome"} (${f.size} byte)`).join(", ");
+    toast(got ? "Servono file .glb. Ricevuto: " + got : "Il browser non ha passato nessun file: riprova a trascinare");
+    return;
+  }
+  const added = glbs.map((f) => ({ label: prettyName(f.name || "modello.glb"), getFile: async () => f }));
   entries.push(...added);
   fillSelect();
   const idx = entries.indexOf(added[0]);
@@ -483,28 +495,19 @@ addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; doc
 addEventListener("dragover", (e) => e.preventDefault());
 addEventListener("drop", async (e) => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
-  // Tutto va richiesto subito: dopo un "await" il browser svuota i dati del trascinamento.
-  const dropped = [...e.dataTransfer.items].filter((it) => it.kind === "file").map((it) => {
-    const file = it.getAsFile();
-    return {
-      file,
-      buf: file ? file.arrayBuffer().catch(() => null) : null,
-      handle: it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : null,
-    };
-  });
-  const files = [];
-  for (const d of dropped) {
-    const h = await d.handle;
-    if (h && h.kind === "directory") { await openFolderHandle(h); return; }
-    let f = null;
-    if (h && h.kind === "file") { try { f = await h.getFile(); } catch (err) {} }
-    if (!f || !f.size) {                       // ripiego sui byte letti al momento del rilascio
-      const buf = await d.buf;
-      if (buf && buf.byteLength && d.file) f = new File([buf], d.file.name);
-    }
-    if (f) files.push(f);
-  }
-  addFiles(files);
+  // Tutto va richiesto subito, in modo sincrono: dopo un "await" il browser svuota i dati del trascinamento.
+  const dt = e.dataTransfer;
+  const items = [...(dt.items || [])].filter((it) => it.kind === "file");
+  const fromList = [...(dt.files || [])];
+  const fromItems = items.map((it) => it.getAsFile()).filter(Boolean);
+  const dropped = (fromList.length ? fromList : fromItems);
+  const copies = dropped.map((f) =>                       // copia in memoria, così il file resta leggibile
+    f.arrayBuffer().then((buf) => new File([buf], f.name, { type: f.type })).catch(() => f));
+  const handles = items.map((it) => (it.getAsFileSystemHandle ? it.getAsFileSystemHandle().catch(() => null) : null));
+
+  const dir = (await Promise.all(handles)).find((h) => h && h.kind === "directory");
+  if (dir) { await openFolderHandle(dir); return; }
+  addFiles(await Promise.all(copies));
 });
 
 /* ------------------------------------------------------------------
