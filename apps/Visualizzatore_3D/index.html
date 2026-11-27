@@ -131,6 +131,23 @@
   .range { display: block; margin-top: 12px; font-size: 13px; color: var(--ink-dim); }
   .range input { width: 100%; accent-color: var(--brass); margin-top: 6px; }
 
+
+  .pads { display: flex; gap: 18px; align-items: center; margin-top: 14px; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); gap: 4px; }
+  .dpad .up { grid-area: 1 / 2; } .dpad .left { grid-area: 2 / 1; } .dpad .mid { grid-area: 2 / 2; }
+  .dpad .right { grid-area: 2 / 3; } .dpad .down { grid-area: 3 / 2; }
+  .pad {
+    border: 0; border-radius: 12px; background: var(--slate-3); color: var(--ink); cursor: pointer;
+    display: grid; place-items: center; touch-action: none; user-select: none; font-size: 22px; line-height: 1;
+  }
+  .pad:hover { background: #4a585f; }
+  .pad:active { background: var(--brass); color: #1b1608; }
+  .pad.mid { background: transparent; box-shadow: inset 0 0 0 1px var(--slate-3); }
+  .pad svg { width: 20px; height: 20px; }
+  .zoomcol { display: flex; flex-direction: column; gap: 4px; }
+  .zoomcol .pad { width: 44px; height: 44px; }
+  .tools-label { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-dim); }
+
   :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
   .ar-btn {
@@ -218,8 +235,29 @@
 
   <section id="flameSection">
     <h2>Fiamma</h2>
-    <label class="switch"><span>Fiamma (video)</span><input type="checkbox" id="flameToggle" disabled></label>
+    <label class="switch"><span>Mostra la fiamma</span><input type="checkbox" id="flameToggle" disabled></label>
     <p class="note" id="flameNote"></p>
+    <div id="flameTools" hidden>
+      <select id="flameSelect" aria-label="Fiamma da regolare"></select>
+      <div class="pads">
+        <div class="dpad">
+          <button class="pad up" data-act="up" aria-label="Sposta la fiamma in alto"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l6-6 6 6"/></svg></button>
+          <button class="pad left" data-act="left" aria-label="Sposta la fiamma a sinistra"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 4l-6 6 6 6"/></svg></button>
+          <button class="pad mid" id="flameCenter" aria-label="Riporta la fiamma al centro" title="Riporta al centro"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="10" cy="10" r="2.5"/></svg></button>
+          <button class="pad right" data-act="right" aria-label="Sposta la fiamma a destra"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4l6 6-6 6"/></svg></button>
+          <button class="pad down" data-act="down" aria-label="Sposta la fiamma in basso"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l6 6 6-6"/></svg></button>
+        </div>
+        <div class="zoomcol">
+          <button class="pad" data-act="zin" aria-label="Ingrandisci la fiamma">+</button>
+          <button class="pad" data-act="zout" aria-label="Riduci la fiamma">−</button>
+        </div>
+      </div>
+      <label class="switch" style="margin-top:12px"><span>Capovolgi in verticale</span><input type="checkbox" id="flameFlip" checked></label>
+      <label class="range">Sfondo nero trasparente
+        <input type="range" id="flameThr" min="0" max="40" step="1" value="8">
+      </label>
+      <p class="tools-label">Tieni premuto un tasto per muovere la fiamma in continuo. Le regolazioni restano salvate per questo modello.</p>
+    </div>
   </section>
 
   <section>
@@ -283,6 +321,7 @@ const db = {
 ------------------------------------------------------------------- */
 let entries = [];          // { label, getFile }
 let currentUrl = null;
+let currentLabel = "";
 
 function fillSelect() {
   const sel = $("modelSelect");
@@ -297,15 +336,37 @@ function fillSelect() {
   sel.disabled = false;
 }
 
+function failLoad(name, msg) {
+  $("modelName").textContent = prettyName(name || "");
+  $("modelMeta").textContent = msg;
+  $("empty").classList.add("hidden");
+  toast(msg);
+}
+
 async function showEntry(i) {
   const e = entries[i]; if (!e) return;
-  const file = await e.getFile();
-  if (currentUrl) URL.revokeObjectURL(currentUrl);
-  currentUrl = URL.createObjectURL(file);
-  $("modelName").textContent = prettyName(file.name);
-  $("modelMeta").textContent = "Caricamento…";
-  $("empty").classList.add("hidden");
-  viewer.src = currentUrl;
+  currentLabel = e.label;
+  let file;
+  try {
+    file = await e.getFile();
+    const head = new Uint8Array(await file.slice(0, 4).arrayBuffer());
+    if (String.fromCharCode(...head) !== "glTF") {
+      failLoad(file.name, head[0] === 0x7b
+        ? "Questo è un .gltf (testo), non un .glb. Esporta il modello in formato GLB."
+        : "Il file non è un GLB valido.");
+      return;
+    }
+    const buf = await file.arrayBuffer();
+    if (currentUrl) URL.revokeObjectURL(currentUrl);
+    currentUrl = URL.createObjectURL(new Blob([buf], { type: "model/gltf-binary" }));
+    $("modelName").textContent = prettyName(file.name);
+    $("modelMeta").textContent = "Caricamento…";
+    $("empty").classList.add("hidden");
+    viewer.src = currentUrl;
+  } catch (err) {
+    console.error(err);
+    failLoad(file ? file.name : e.label, "Non riesco a leggere il file dal disco.");
+  }
 }
 
 async function scanDir(dir, prefix = "", depth = 0, out = []) {
@@ -399,14 +460,16 @@ addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; doc
 addEventListener("dragover", (e) => e.preventDefault());
 addEventListener("drop", async (e) => {
   e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
-  const item = e.dataTransfer.items && e.dataTransfer.items[0];
-  if (item && item.getAsFileSystemHandle) {
-    try {
-      const h = await item.getAsFileSystemHandle();
-      if (h && h.kind === "directory") { await openFolderHandle(h); return; }
-    } catch (err) { /* ignora, passa ai file */ }
-  }
-  addFiles([...e.dataTransfer.files]);
+  // Va tutto letto subito: dopo un "await" il browser svuota i dati del trascinamento.
+  const files = [...e.dataTransfer.files];
+  const handlePromises = [...e.dataTransfer.items]
+    .filter((it) => it.kind === "file" && it.getAsFileSystemHandle)
+    .map((it) => it.getAsFileSystemHandle());
+  try {
+    const dir = (await Promise.all(handlePromises)).find((h) => h && h.kind === "directory");
+    if (dir) { await openFolderHandle(dir); return; }
+  } catch (err) { /* si passa ai file */ }
+  addFiles(files);
 });
 
 /* ------------------------------------------------------------------
@@ -462,47 +525,181 @@ $("resetColor").onclick = () => {
 };
 
 /* ------------------------------------------------------------------
-   Fiamma: texture video (fiamma.mp4 / fiamma_l.mp4)
+   Fiamma: il video viene disegnato su un canvas, il nero diventa
+   trasparente e il canvas fa da texture del materiale.
 ------------------------------------------------------------------- */
-let flameMats = [];            // { m, src }
-const videoTextures = new Map();   // src -> texture
+const DEFAULT_FLAME = { x: 0, y: 0, z: 1, flip: true, thr: 8 };
+let flames = [];                 // { m, src, st, key, video, tex, canvas, ctx, ... }
+let flameOn = false, flameRaf = 0;
+const videoCache = new Map();
 
-function getVideoTexture(src) {
-  if (!videoTextures.has(src)) videoTextures.set(src, viewer.createVideoTexture(src));
-  return videoTextures.get(src);
+function getVideo(src) {
+  if (!videoCache.has(src)) {
+    const v = document.createElement("video");
+    v.muted = true; v.loop = true; v.playsInline = true; v.preload = "auto";
+    v.crossOrigin = "anonymous"; v.src = src;
+    v.play().catch(() => {});
+    videoCache.set(src, v);
+  }
+  return videoCache.get(src);
+}
+const whenMeta = (v) => new Promise((res, rej) => {
+  if (v.readyState >= 1) return res();
+  v.addEventListener("loadedmetadata", res, { once: true });
+  v.addEventListener("error", () => rej(new Error("video non trovato: " + v.getAttribute("src"))), { once: true });
+});
+
+function loadFlameState(key) {
+  try { return { ...DEFAULT_FLAME, ...JSON.parse(localStorage.getItem(key)) }; } catch (e) { return { ...DEFAULT_FLAME }; }
+}
+function saveFlameState(f) { try { localStorage.setItem(f.key, JSON.stringify(f.st)); } catch (e) {} f.dirty = true; }
+
+function renderFlame(f) {
+  const { canvas: c, ctx, video: v, st } = f;
+  const w = c.width, h = c.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  if (st.flip) { ctx.translate(0, h); ctx.scale(1, -1); }
+  ctx.translate(w / 2 + st.x * w, h / 2 + st.y * h);
+  ctx.scale(st.z, st.z);
+  ctx.drawImage(v, -w / 2, -h / 2, w, h);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  // il nero diventa trasparente: la trasparenza segue la luminosità del pixel
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  const lo = (st.thr / 100) * 255, span = Math.max(20, 170 - lo);
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    const a = r > g ? (r > b ? r : b) : (g > b ? g : b);
+    if (a <= lo) { d[i + 3] = 0; continue; }
+    const al = Math.min(1, (a - lo) / span);
+    d[i] = Math.min(255, r / al); d[i + 1] = Math.min(255, g / al); d[i + 2] = Math.min(255, b / al);
+    d[i + 3] = al * 255;
+  }
+  ctx.putImageData(img, 0, 0);
 }
 
-function setFlame(on) {
-  flameMats.forEach(({ m, src }) => {
+function flameLoop() {
+  if (!flameOn) return;
+  for (const f of flames) {
+    const v = f.video;
+    if (!f.ctx || v.readyState < 2) continue;
+    if (f.dirty || v.currentTime !== f.last) {
+      f.last = v.currentTime; f.dirty = false;
+      try { renderFlame(f); f.tex.source.update(); }
+      catch (err) {
+        console.error(err); flameOn = false;
+        toast("Il browser blocca il video: apri la pagina da un server locale (non da file).");
+        return;
+      }
+    }
+  }
+  flameRaf = requestAnimationFrame(flameLoop);
+}
+
+async function setFlame(on) {
+  flameOn = on;
+  cancelAnimationFrame(flameRaf);
+  for (const f of flames) {
+    const m = f.m;
     if (on) {
-      const tex = getVideoTexture(src);
-      m.pbrMetallicRoughness.setBaseColorFactor([0, 0, 0, 1]);
-      m.pbrMetallicRoughness.baseColorTexture.setTexture(null);
-      m.setEmissiveFactor([1, 1, 1]);
-      m.emissiveTexture.setTexture(tex);
-    } else {
+      try {
+        f.video = getVideo(f.src);
+        await whenMeta(f.video);
+        if (!f.tex) {
+          f.tex = viewer.createCanvasTexture();
+          f.canvas = f.tex.source.element;
+          const k = Math.min(1, 640 / Math.max(f.video.videoWidth, f.video.videoHeight));
+          f.canvas.width = Math.round(f.video.videoWidth * k);
+          f.canvas.height = Math.round(f.video.videoHeight * k);
+          f.ctx = f.canvas.getContext("2d", { willReadFrequently: true });
+          try { f.tex.sampler.setWrapS("ClampToEdge"); f.tex.sampler.setWrapT("ClampToEdge"); } catch (e) {}
+        }
+        if (!f.saved) f.saved = {
+          alpha: m.alphaMode, ds: m.doubleSided,
+          base: [...m.pbrMetallicRoughness.baseColorFactor],
+          baseTex: m.pbrMetallicRoughness.baseColorTexture.texture || null,
+        };
+        m.setAlphaMode("BLEND");
+        try { m.setDoubleSided(true); } catch (e) {}
+        m.pbrMetallicRoughness.setBaseColorFactor([0, 0, 0, 1]);   // il colore arriva dall'emissione, la trasparenza dalla texture
+        m.pbrMetallicRoughness.baseColorTexture.setTexture(f.tex);
+        m.setEmissiveFactor([1, 1, 1]);
+        m.emissiveTexture.setTexture(f.tex);
+        f.dirty = true;
+      } catch (err) {
+        console.error(err); toast("Non riesco a leggere il video «" + f.src.replace("./", "") + "»");
+      }
+    } else if (f.saved) {
       m.emissiveTexture.setTexture(null);
       m.setEmissiveFactor([0, 0, 0]);
-      m.pbrMetallicRoughness.setBaseColorFactor(originals.get(m) || [0.1, 0.1, 0.1, 1]);
+      m.pbrMetallicRoughness.baseColorTexture.setTexture(f.saved.baseTex);
+      m.pbrMetallicRoughness.setBaseColorFactor(f.saved.base);
+      m.setAlphaMode(f.saved.alpha);
+      try { m.setDoubleSided(f.saved.ds); } catch (e) {}
     }
-  });
+  }
+  if (on) flameRaf = requestAnimationFrame(flameLoop);
 }
 
+const activeFlame = () => flames[+$("flameSelect").value || 0];
+
+function syncFlameControls() {
+  const f = activeFlame(); if (!f) return;
+  $("flameFlip").checked = f.st.flip;
+  $("flameThr").value = f.st.thr;
+}
+
+function nudge(act) {
+  const f = activeFlame(); if (!f) return;
+  const s = f.st, step = 0.02;
+  if (act === "up") s.y -= step;
+  if (act === "down") s.y += step;
+  if (act === "left") s.x -= step;
+  if (act === "right") s.x += step;
+  if (act === "zin") s.z = Math.min(5, s.z * 1.05);
+  if (act === "zout") s.z = Math.max(0.2, s.z / 1.05);
+  saveFlameState(f);
+}
+
+document.querySelectorAll("[data-act]").forEach((btn) => {
+  let t1, t2;
+  const stop = () => { clearTimeout(t1); clearInterval(t2); };
+  btn.addEventListener("pointerdown", (e) => {
+    e.preventDefault(); nudge(btn.dataset.act);
+    t1 = setTimeout(() => { t2 = setInterval(() => nudge(btn.dataset.act), 50); }, 350);
+  });
+  ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
+  btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nudge(btn.dataset.act); } });
+});
+$("flameCenter").onclick = () => { const f = activeFlame(); if (!f) return; f.st = { ...DEFAULT_FLAME }; saveFlameState(f); syncFlameControls(); };
+$("flameFlip").onchange = (e) => { const f = activeFlame(); if (f) { f.st.flip = e.target.checked; saveFlameState(f); } };
+$("flameThr").oninput = (e) => { const f = activeFlame(); if (f) { f.st.thr = +e.target.value; saveFlameState(f); } };
+$("flameSelect").onchange = syncFlameControls;
+$("flameToggle").onchange = (e) => setFlame(e.target.checked);
+
 function buildFlame() {
-  videoTextures.clear();
-  flameMats = (viewer.model?.materials || [])
-    .filter(isFlame).map((m) => ({ m, src: flameSrcFor(m.name) }));
-  const t = $("flameToggle"), note = $("flameNote");
-  t.disabled = !flameMats.length;
-  if (flameMats.length) {
-    note.textContent = flameMats.map(({ m, src }) => `«${m.name}» usa ${src.replace("./", "")}`).join(" · ");
-    t.checked = true; setFlame(true);
+  cancelAnimationFrame(flameRaf); flameOn = false;
+  flames = (viewer.model?.materials || []).filter(isFlame).map((m) => {
+    const key = `flame:${currentLabel}:${m.name}`;
+    return { m, src: flameSrcFor(m.name), key, st: loadFlameState(key), dirty: true, last: -1 };
+  });
+  const t = $("flameToggle"), note = $("flameNote"), sel = $("flameSelect");
+  t.disabled = !flames.length;
+  $("flameTools").hidden = !flames.length;
+  sel.innerHTML = "";
+  flames.forEach((f, i) => sel.add(new Option(`${f.m.name} (${f.src.replace("./", "")})`, i)));
+  sel.style.display = flames.length > 1 ? "" : "none";
+  if (flames.length) {
+    note.textContent = flames.length === 1
+      ? `«${flames[0].m.name}» usa ${flames[0].src.replace("./", "")}.`
+      : "Scegli quale fiamma regolare.";
+    t.checked = true; syncFlameControls(); setFlame(true);
   } else {
     t.checked = false;
     note.textContent = "Nessun materiale chiamato «fiamma» o «fiammal» in questo modello.";
   }
 }
-$("flameToggle").onchange = (e) => setFlame(e.target.checked);
 
 /* ------------------------------------------------------------------
    Eventi del viewer e controlli vista
@@ -513,7 +710,13 @@ viewer.addEventListener("load", () => {
   const n = viewer.model.materials.length;
   $("modelMeta").textContent = `${n} ${n === 1 ? "materiale" : "materiali"}`;
 });
-viewer.addEventListener("error", () => { $("modelMeta").textContent = ""; toast("Impossibile aprire questo file"); });
+viewer.addEventListener("error", (ev) => {
+  const d = ev.detail || {};
+  const why = (d.sourceError && d.sourceError.message) || d.type || "errore sconosciuto";
+  console.error("model-viewer:", ev.detail);
+  const msg = "Impossibile aprire questo file (" + String(why).slice(0, 110) + ")";
+  $("modelMeta").textContent = msg; toast(msg);
+});
 
 $("autoRotate").onchange = (e) => e.target.checked ? viewer.setAttribute("auto-rotate", "") : viewer.removeAttribute("auto-rotate");
 $("shadowToggle").onchange = (e) => (viewer.shadowIntensity = e.target.checked ? 1 : 0);
