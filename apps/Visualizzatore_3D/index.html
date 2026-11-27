@@ -218,7 +218,7 @@
 
   <section id="flameSection">
     <h2>Fiamma</h2>
-    <label class="switch"><span>Fiamma animata</span><input type="checkbox" id="flameToggle" disabled></label>
+    <label class="switch"><span>Fiamma (video)</span><input type="checkbox" id="flameToggle" disabled></label>
     <p class="note" id="flameNote"></p>
   </section>
 
@@ -253,7 +253,13 @@ const viewer = $("viewer");
    Utilità
 ------------------------------------------------------------------- */
 const hasDirPicker = "showDirectoryPicker" in window;
-const FLAME_RX = /fiamm|flame|fire|fuoco|fuego/i;
+/* Nome del materiale -> video da usare come fiamma */
+const FLAME_VIDEOS = [
+  { rx: /^fiamma[_\s-]?l(\.\d+)?$/i, src: "./fiamma_l.mp4" },   // "fiammal" -> fiamma_l.mp4
+  { rx: /^fiamma(\.\d+)?$/i,           src: "./fiamma.mp4"   },   // "fiamma"  -> fiamma.mp4
+];
+const flameSrcFor = (name) => (FLAME_VIDEOS.find((f) => f.rx.test((name || "").trim())) || {}).src;
+const isFlame = (m) => !!flameSrcFor(m.name);
 let toastTimer;
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -422,7 +428,7 @@ function buildMaterials() {
   sel.innerHTML = "";
   mats.forEach((m, i) => {
     originals.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
-    if (FLAME_RX.test(m.name || "")) return;
+    if (isFlame(m)) return;
     colorable.push(m);
     sel.add(new Option(m.name ? prettyName(m.name) : `Componente ${i + 1}`, colorable.length - 1));
   });
@@ -451,93 +457,49 @@ document.querySelectorAll(".sw").forEach((s) => (s.onclick = () => applyColor(s.
 $("customColor").oninput = (e) => applyColor(e.target.value);
 $("matSelect").onchange = syncSwatchState;
 $("resetColor").onclick = () => {
-  originals.forEach((rgba, m) => { if (!FLAME_RX.test(m.name || "")) m.pbrMetallicRoughness.setBaseColorFactor(rgba); });
+  originals.forEach((rgba, m) => { if (!isFlame(m)) m.pbrMetallicRoughness.setBaseColorFactor(rgba); });
   syncSwatchState(); toast("Colori originali ripristinati");
 };
 
 /* ------------------------------------------------------------------
-   Fiamma animata (disegnata al volo su canvas, usata come texture)
+   Fiamma: texture video (fiamma.mp4 / fiamma_l.mp4)
 ------------------------------------------------------------------- */
-const flameCanvas = document.createElement("canvas");
-flameCanvas.width = flameCanvas.height = 256;
-const fctx = flameCanvas.getContext("2d");
-let flameMats = [], flameTexture = null, flameOn = false, flameRaf = 0;
+let flameMats = [];            // { m, src }
+const videoTextures = new Map();   // src -> texture
 
-function drawFlame(t) {
-  const W = 256, H = 256, cx = W / 2, base = H - 8;
-  fctx.clearRect(0, 0, W, H);
-  fctx.globalCompositeOperation = "lighter";
-
-  const glow = fctx.createRadialGradient(cx, base, 4, cx, base, 120);
-  glow.addColorStop(0, "rgba(255,140,40,.55)"); glow.addColorStop(1, "rgba(255,60,0,0)");
-  fctx.fillStyle = glow; fctx.fillRect(0, 0, W, H);
-
-  const layers = [
-    { k: 1.00, w: 70, a: "rgba(255,70,0,0)",   b: "rgba(255,95,10,.95)" },
-    { k: 0.78, w: 52, a: "rgba(255,150,20,0)", b: "rgba(255,185,40,.95)" },
-    { k: 0.52, w: 34, a: "rgba(255,230,120,0)", b: "rgba(255,250,200,1)" },
-  ];
-  layers.forEach((L, i) => {
-    const flick = 1 + Math.sin(t * 9 + i * 2.1) * 0.06 + Math.sin(t * 21 + i) * 0.035;
-    const hh = (H - 30) * L.k * flick;
-    const sway = Math.sin(t * 3.1 + i * 1.7) * 16 * (1 - i * 0.25);
-    const w = L.w * (1 + Math.sin(t * 6 + i) * 0.05);
-    const g = fctx.createLinearGradient(0, base, 0, base - hh);
-    g.addColorStop(0, L.b); g.addColorStop(0.55, L.b); g.addColorStop(1, L.a);
-    fctx.fillStyle = g;
-    fctx.beginPath();
-    fctx.moveTo(cx, base);
-    fctx.bezierCurveTo(cx - w * 1.25, base - hh * 0.18, cx - w * 0.8 + sway * 0.4, base - hh * 0.62, cx + sway, base - hh);
-    fctx.bezierCurveTo(cx + w * 0.8 + sway * 0.4, base - hh * 0.62, cx + w * 1.25, base - hh * 0.18, cx, base);
-    fctx.fill();
-  });
-  fctx.globalCompositeOperation = "source-over";
-}
-
-function flameLoop(ms) {
-  if (!flameOn) return;
-  drawFlame(ms / 1000);
-  try { flameTexture?.source?.update?.(); } catch (e) {}
-  flameRaf = requestAnimationFrame(flameLoop);
+function getVideoTexture(src) {
+  if (!videoTextures.has(src)) videoTextures.set(src, viewer.createVideoTexture(src));
+  return videoTextures.get(src);
 }
 
 function setFlame(on) {
-  if (!flameMats.length) return;
-  flameOn = on;
-  cancelAnimationFrame(flameRaf);
-  if (on) {
-    drawFlame(0);
-    flameTexture = flameTexture || viewer.createCanvasTexture(flameCanvas);
-    flameMats.forEach((m) => {
-      m.setAlphaMode("BLEND");
-      try { m.setDoubleSided(true); } catch (e) {}
-      m.pbrMetallicRoughness.setBaseColorFactor([1, 1, 1, 1]);
-      m.pbrMetallicRoughness.baseColorTexture.setTexture(flameTexture);
-      m.setEmissiveFactor([1, 1, 1]);
-      m.emissiveTexture.setTexture(flameTexture);
-    });
-    flameRaf = requestAnimationFrame(flameLoop);
-  } else {
-    flameMats.forEach((m) => {
+  flameMats.forEach(({ m, src }) => {
+    if (on) {
+      const tex = getVideoTexture(src);
+      m.pbrMetallicRoughness.setBaseColorFactor([0, 0, 0, 1]);
       m.pbrMetallicRoughness.baseColorTexture.setTexture(null);
+      m.setEmissiveFactor([1, 1, 1]);
+      m.emissiveTexture.setTexture(tex);
+    } else {
       m.emissiveTexture.setTexture(null);
       m.setEmissiveFactor([0, 0, 0]);
       m.pbrMetallicRoughness.setBaseColorFactor(originals.get(m) || [0.1, 0.1, 0.1, 1]);
-    });
-  }
+    }
+  });
 }
 
 function buildFlame() {
-  cancelAnimationFrame(flameRaf); flameOn = false; flameTexture = null;
-  flameMats = (viewer.model?.materials || []).filter((m) => FLAME_RX.test(m.name || ""));
+  videoTextures.clear();
+  flameMats = (viewer.model?.materials || [])
+    .filter(isFlame).map((m) => ({ m, src: flameSrcFor(m.name) }));
   const t = $("flameToggle"), note = $("flameNote");
   t.disabled = !flameMats.length;
   if (flameMats.length) {
-    note.textContent = `Trovato il componente «${flameMats[0].name}».`;
+    note.textContent = flameMats.map(({ m, src }) => `«${m.name}» usa ${src.replace("./", "")}`).join(" · ");
     t.checked = true; setFlame(true);
   } else {
     t.checked = false;
-    note.textContent = "Questo modello non ha un componente con «fiamma», «flame» o «fire» nel nome.";
+    note.textContent = "Nessun materiale chiamato «fiamma» o «fiammal» in questo modello.";
   }
 }
 $("flameToggle").onchange = (e) => setFlame(e.target.checked);
