@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Showroom 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --stone-1: #e4e1dc;
+    --stone-2: #b9b5af;
+    --slate: #1d2428;
+    --slate-2: #2a343a;
+    --slate-3: #3a464d;
+    --brass: #d2a85f;
+    --ember: #ff6a1a;
+    --ink: #f2efe9;
+    --ink-dim: #a7b0b5;
+    --radius: 18px;
+    --font: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; font-family: var(--font); color: var(--ink); }
+  body {
+    background:
+      radial-gradient(ellipse 70% 60% at 62% 45%, #f3f1ed 0%, transparent 70%),
+      linear-gradient(160deg, var(--stone-1), var(--stone-2));
+  }
+
+  /* ---------- viewer ---------- */
+  model-viewer {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    --poster-color: transparent;
+    background: transparent;
+    outline: none;
+  }
+  .stage-title {
+    position: absolute; right: 32px; bottom: 26px; text-align: right;
+    color: #2c3338; pointer-events: none; max-width: 50vw;
+  }
+  .stage-title h1 {
+    margin: 0; font-size: clamp(28px, 4.2vw, 64px); font-weight: 800;
+    letter-spacing: -0.03em; line-height: .95;
+    overflow-wrap: anywhere;
+  }
+  .stage-title p { margin: 8px 0 0; font-size: 14px; color: #5d666c; }
+
+  .empty {
+    position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    text-align: center; color: #3a4349; padding: 0 24px 0 360px;
+  }
+  .empty strong { display: block; font-size: clamp(22px, 3vw, 38px); letter-spacing: -0.02em; font-weight: 800; }
+  .empty span { display: block; margin-top: 10px; font-size: 15px; color: #606a70; }
+  .empty.hidden { display: none; }
+
+  .dropzone {
+    position: absolute; inset: 12px; border: 2px dashed var(--slate); border-radius: 26px;
+    background: rgba(29,36,40,.07); display: none; place-items: center; z-index: 30;
+    font-size: 26px; font-weight: 800; color: var(--slate); pointer-events: none;
+  }
+  body.dragging .dropzone { display: grid; }
+
+  /* ---------- panel ---------- */
+  .panel {
+    position: absolute; top: 16px; left: 16px; bottom: 16px; width: 320px; z-index: 10;
+    background: linear-gradient(180deg, var(--slate-2), var(--slate));
+    border-radius: 24px; padding: 22px 20px; overflow-y: auto;
+    box-shadow: 0 30px 60px -20px rgba(20,25,28,.55), inset 0 1px 0 rgba(255,255,255,.06);
+    scrollbar-width: thin; scrollbar-color: var(--slate-3) transparent;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
+  .brand-mark {
+    width: 38px; height: 38px; border-radius: 12px; flex: none;
+    background: radial-gradient(circle at 50% 85%, #fff2b0 0 12%, var(--ember) 45%, #7a1d00 100%);
+    box-shadow: 0 0 22px rgba(255,106,26,.45);
+  }
+  .brand b { font-size: 20px; font-weight: 800; letter-spacing: -0.02em; display: block; line-height: 1; }
+  .brand small { color: var(--ink-dim); font-size: 12.5px; }
+
+  section { padding: 18px 0; border-top: 1px solid rgba(255,255,255,.08); }
+  section:first-of-type { border-top: 0; padding-top: 0; }
+  h2 { margin: 0 0 12px; font-size: 15px; font-weight: 600; color: var(--brass); letter-spacing: .01em; }
+
+  .row { display: flex; gap: 8px; }
+  button, select, input[type=color] { font-family: inherit; }
+  .btn {
+    flex: 1; border: 0; cursor: pointer; padding: 11px 14px; border-radius: 12px;
+    background: var(--brass); color: #1b1608; font-weight: 600; font-size: 14px;
+    transition: transform .12s, filter .12s;
+  }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:active { transform: translateY(1px); }
+  .btn.ghost { background: var(--slate-3); color: var(--ink); }
+  .btn[hidden] { display: none; }
+
+  select {
+    width: 100%; margin-top: 10px; padding: 11px 12px; border-radius: 12px;
+    background: #141a1d; color: var(--ink); border: 1px solid var(--slate-3); font-size: 14px;
+  }
+  select:disabled { opacity: .5; }
+  .note { margin: 10px 0 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-dim); }
+  .note.warn { color: #f0b37a; }
+
+  .swatches { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; align-items: center; }
+  .sw {
+    width: 34px; height: 34px; border-radius: 50%; border: 2px solid transparent; cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); transition: transform .12s, border-color .12s;
+    padding: 0;
+  }
+  .sw:hover { transform: scale(1.1); }
+  .sw.active { border-color: var(--brass); }
+  .picker {
+    position: relative; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; cursor: pointer;
+    background: conic-gradient(#f33, #fc3, #3c6, #3cf, #63f, #f3c, #f33);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  .picker input { position: absolute; inset: -8px; width: 60px; height: 60px; opacity: 0; cursor: pointer; }
+  .linkbtn {
+    margin-top: 12px; background: none; border: 0; padding: 0; color: var(--ink-dim);
+    font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .linkbtn:hover { color: var(--ink); }
+
+  .switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; cursor: pointer; padding: 6px 0; }
+  .switch input { appearance: none; width: 44px; height: 26px; border-radius: 13px; background: var(--slate-3); position: relative; cursor: pointer; transition: background .2s; flex: none; margin: 0; }
+  .switch input::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .2s; }
+  .switch input:checked { background: var(--ember); }
+  .switch input:checked::after { transform: translateX(18px); }
+  .range { display: block; margin-top: 12px; font-size: 13px; color: var(--ink-dim); }
+  .range input { width: 100%; accent-color: var(--brass); margin-top: 6px; }
+
+  :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+  .ar-btn {
+    position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+    margin-left: 168px; padding: 11px 18px; border-radius: 999px; border: 0; cursor: pointer;
+    background: var(--slate); color: var(--ink); font-weight: 600; font-size: 14px;
+    box-shadow: 0 10px 24px -8px rgba(0,0,0,.5);
+  }
+
+  .toast {
+    position: absolute; top: 20px; left: 50%; margin-left: 168px; transform: translate(-50%, -20px);
+    background: var(--slate); color: var(--ink); padding: 10px 18px; border-radius: 999px; font-size: 14px;
+    opacity: 0; transition: .3s; z-index: 40; pointer-events: none; box-shadow: 0 10px 24px -8px rgba(0,0,0,.5);
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ---------- mobile ---------- */
+  @media (max-width: 760px) {
+    .panel { top: auto; left: 8px; right: 8px; bottom: 8px; width: auto; max-height: 46vh; border-radius: 22px 22px 18px 18px; }
+    .stage-title { right: 18px; bottom: auto; top: 16px; max-width: 70vw; }
+    .empty { padding: 0 24px 40vh; }
+    .ar-btn, .toast { margin-left: 0; }
+    .ar-btn { bottom: calc(46vh + 20px); }
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<model-viewer id="viewer" camera-controls touch-action="pan-y" ar
+  shadow-intensity="1" shadow-softness="1" exposure="1" environment-image="neutral"
+  interaction-prompt="none" alt="Modello 3D">
+  <button slot="ar-button" class="ar-btn">Vedi nella tua stanza</button>
+</model-viewer>
+
+<div class="stage-title">
+  <h1 id="modelName"></h1>
+  <p id="modelMeta"></p>
+</div>
+
+<div class="empty" id="empty">
+  <div>
+    <strong>Scegli un modello da guardare</strong>
+    <span>Seleziona la cartella con i tuoi file .glb, oppure trascinane uno qui.</span>
+  </div>
+</div>
+<div class="dropzone">Rilascia il file .glb</div>
+<div class="toast" id="toast"></div>
+
+<aside class="panel">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <div><b>Showroom 3D</b><small>Il tuo catalogo in tre dimensioni</small></div>
+  </div>
+
+  <section>
+    <h2>Modelli</h2>
+    <div class="row">
+      <button class="btn" id="pickFolder">Scegli cartella</button>
+      <button class="btn ghost" id="pickFile">Apri file</button>
+    </div>
+    <button class="btn ghost" id="reopen" style="margin-top:8px;width:100%" hidden></button>
+    <select id="modelSelect" disabled aria-label="Modello da visualizzare">
+      <option>Nessun modello caricato</option>
+    </select>
+    <p class="note" id="folderNote"></p>
+    <input type="file" id="fileInput" accept=".glb,model/gltf-binary" multiple hidden>
+    <input type="file" id="folderInput" webkitdirectory multiple hidden>
+  </section>
+
+  <section id="colorSection">
+    <h2>Colori</h2>
+    <select id="matSelect" disabled aria-label="Componente da colorare" style="margin-top:0"></select>
+    <div class="swatches" id="swatches">
+      <button class="sw" data-c="#b3261e" style="background:#b3261e" title="Rosso" aria-label="Rosso"></button>
+      <button class="sw" data-c="#f1efea" style="background:#f1efea" title="Bianco" aria-label="Bianco"></button>
+      <button class="sw" data-c="#141414" style="background:#141414" title="Nero" aria-label="Nero"></button>
+      <button class="sw" data-c="#4a5258" style="background:#4a5258" title="Grafite" aria-label="Grafite"></button>
+      <button class="sw" data-c="#2f5d4a" style="background:#2f5d4a" title="Verde bosco" aria-label="Verde bosco"></button>
+      <button class="sw" data-c="#c97b3d" style="background:#c97b3d" title="Rame" aria-label="Rame"></button>
+      <label class="picker" title="Colore personalizzato"><input type="color" id="customColor" value="#b3261e" aria-label="Colore personalizzato"></label>
+    </div>
+    <button class="linkbtn" id="resetColor">Ripristina i colori originali</button>
+  </section>
+
+  <section id="flameSection">
+    <h2>Fiamma</h2>
+    <label class="switch"><span>Fiamma animata</span><input type="checkbox" id="flameToggle" disabled></label>
+    <p class="note" id="flameNote"></p>
+  </section>
+
+  <section>
+    <h2>Vista</h2>
+    <label class="switch"><span>Rotazione automatica</span><input type="checkbox" id="autoRotate"></label>
+    <label class="switch"><span>Ombra a terra</span><input type="checkbox" id="shadowToggle" checked></label>
+    <label class="range">Luminosità
+      <input type="range" id="exposure" min="0.3" max="2" step="0.05" value="1">
+    </label>
+    <button class="linkbtn" id="resetCam">Riporta la camera al centro</button>
+  </section>
+</aside>
+
+<script type="module">
+/* ------------------------------------------------------------------
+   Caricamento di <model-viewer>: prima dalla CDN, poi dal file locale
+------------------------------------------------------------------- */
+const MV_SOURCES = [
+  "https://cdn.jsdelivr.net/npm/@google/model-viewer@3.5.0/dist/model-viewer.min.js",
+  "./model-viewer.min.js"
+];
+for (const src of MV_SOURCES) {
+  try { await import(src); break; } catch (e) { console.warn("model-viewer non caricato da", src); }
+}
+await customElements.whenDefined("model-viewer");
+
+const $ = (id) => document.getElementById(id);
+const viewer = $("viewer");
+
+/* ------------------------------------------------------------------
+   Utilità
+------------------------------------------------------------------- */
+const hasDirPicker = "showDirectoryPicker" in window;
+const FLAME_RX = /fiamm|flame|fire|fuoco|fuego/i;
+let toastTimer;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
+}
+const prettyName = (n) => n.replace(/\.(glb|gltf)$/i, "").replace(/[_-]+/g, " ");
+
+/* Memorizza l'ultima cartella scelta (solo Chrome/Edge) */
+const db = {
+  open: () => new Promise((res, rej) => {
+    const r = indexedDB.open("showroom3d", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  }),
+  async get(k) { const d = await this.open(); return new Promise((res) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => res(null); }); },
+  async set(k, v) { const d = await this.open(); return new Promise((res) => { const q = d.transaction("kv", "readwrite").objectStore("kv").put(v, k); q.onsuccess = q.onerror = () => res(); }); }
+};
+
+/* ------------------------------------------------------------------
+   Elenco modelli
+------------------------------------------------------------------- */
+let entries = [];          // { label, getFile }
+let currentUrl = null;
+
+function fillSelect() {
+  const sel = $("modelSelect");
+  sel.innerHTML = "";
+  if (!entries.length) {
+    sel.disabled = true;
+    sel.innerHTML = "<option>Nessun modello caricato</option>";
+    return;
+  }
+  entries.sort((a, b) => a.label.localeCompare(b.label, "it", { numeric: true }));
+  entries.forEach((e, i) => sel.add(new Option(e.label, i)));
+  sel.disabled = false;
+}
+
+async function showEntry(i) {
+  const e = entries[i]; if (!e) return;
+  const file = await e.getFile();
+  if (currentUrl) URL.revokeObjectURL(currentUrl);
+  currentUrl = URL.createObjectURL(file);
+  $("modelName").textContent = prettyName(file.name);
+  $("modelMeta").textContent = "Caricamento…";
+  $("empty").classList.add("hidden");
+  viewer.src = currentUrl;
+}
+
+async function scanDir(dir, prefix = "", depth = 0, out = []) {
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === "file" && /\.glb$/i.test(name)) {
+      out.push({ label: prefix + prettyName(name), getFile: () => handle.getFile() });
+    } else if (handle.kind === "directory" && depth < 4 && !name.startsWith(".") && name !== "node_modules") {
+      await scanDir(handle, prefix + name + " / ", depth + 1, out);
+    }
+  }
+  return out;
+}
+
+async function openFolderHandle(handle) {
+  try {
+    $("folderNote").textContent = "Cerco i file .glb…";
+    entries = await scanDir(handle);
+    fillSelect();
+    if (!entries.length) { $("folderNote").textContent = `Nessun file .glb trovato in «${handle.name}».`; $("folderNote").className = "note warn"; return; }
+    $("folderNote").className = "note";
+    $("folderNote").textContent = `${entries.length} modelli in «${handle.name}».`;
+    await showEntry(0);
+  } catch (err) { console.error(err); toast("Non riesco a leggere la cartella"); }
+}
+
+$("pickFolder").onclick = async () => {
+  if (hasDirPicker) {
+    try {
+      const handle = await window.showDirectoryPicker({ mode: "read" });
+      db.set("dir", handle).catch(() => {});
+      $("reopen").hidden = true;
+      await openFolderHandle(handle);
+    } catch (e) { /* annullato */ }
+  } else {
+    $("folderInput").click();
+  }
+};
+
+$("folderInput").onchange = (ev) => {
+  const files = [...ev.target.files].filter((f) => /\.glb$/i.test(f.name));
+  entries = files.map((f) => ({ label: prettyName(f.webkitRelativePath || f.name).replace(/\//g, " / "), getFile: async () => f }));
+  fillSelect();
+  if (!entries.length) { $("folderNote").className = "note warn"; $("folderNote").textContent = "Nessun file .glb trovato nella cartella."; return; }
+  $("folderNote").className = "note"; $("folderNote").textContent = `${entries.length} modelli trovati.`;
+  showEntry(0);
+  ev.target.value = "";
+};
+
+$("pickFile").onclick = () => $("fileInput").click();
+$("fileInput").onchange = (ev) => {
+  addFiles([...ev.target.files]); ev.target.value = "";
+};
+
+function addFiles(files) {
+  const glbs = files.filter((f) => /\.glb$/i.test(f.name));
+  if (!glbs.length) { toast("Servono file in formato .glb"); return; }
+  const first = entries.length;
+  glbs.forEach((f) => entries.push({ label: prettyName(f.name), getFile: async () => f }));
+  fillSelect();
+  const idx = entries.findIndex((e) => e.label === prettyName(glbs[0].name));
+  $("modelSelect").value = idx;
+  $("folderNote").className = "note";
+  $("folderNote").textContent = `${entries.length} modelli in elenco.`;
+  showEntry(idx);
+}
+
+$("modelSelect").onchange = (e) => showEntry(+e.target.value);
+
+if (!hasDirPicker) {
+  $("folderNote").className = "note warn";
+  $("folderNote").textContent = "Questo browser non permette di ricordare la cartella: ti verrà chiesto di confermarla ad ogni apertura. Con Chrome o Edge è più comodo.";
+}
+
+/* Cartella usata l'ultima volta */
+if (hasDirPicker) {
+  db.get("dir").then((h) => {
+    if (!h) return;
+    const b = $("reopen"); b.textContent = `Riapri «${h.name}»`; b.hidden = false;
+    b.onclick = async () => {
+      try {
+        if ((await h.requestPermission({ mode: "read" })) === "granted") { b.hidden = true; openFolderHandle(h); }
+      } catch (e) { toast("Permesso negato"); }
+    };
+  }).catch(() => {});
+}
+
+/* Trascina e rilascia */
+let dragDepth = 0;
+addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; document.body.classList.add("dragging"); });
+addEventListener("dragleave", () => { if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dragging"); } });
+addEventListener("dragover", (e) => e.preventDefault());
+addEventListener("drop", async (e) => {
+  e.preventDefault(); dragDepth = 0; document.body.classList.remove("dragging");
+  const item = e.dataTransfer.items && e.dataTransfer.items[0];
+  if (item && item.getAsFileSystemHandle) {
+    try {
+      const h = await item.getAsFileSystemHandle();
+      if (h && h.kind === "directory") { await openFolderHandle(h); return; }
+    } catch (err) { /* ignora, passa ai file */ }
+  }
+  addFiles([...e.dataTransfer.files]);
+});
+
+/* ------------------------------------------------------------------
+   Materiali e colori
+------------------------------------------------------------------- */
+let originals = new Map();   // materiale -> colore originale
+let colorable = [];          // materiali modificabili
+
+function hexOf(rgba) {
+  return "#" + rgba.slice(0, 3).map((v) => Math.round(Math.pow(v, 1 / 2.2) * 255).toString(16).padStart(2, "0")).join("");
+}
+
+function buildMaterials() {
+  const model = viewer.model;
+  const mats = model ? model.materials : [];
+  originals = new Map();
+  colorable = [];
+  const sel = $("matSelect");
+  sel.innerHTML = "";
+  mats.forEach((m, i) => {
+    originals.set(m, [...m.pbrMetallicRoughness.baseColorFactor]);
+    if (FLAME_RX.test(m.name || "")) return;
+    colorable.push(m);
+    sel.add(new Option(m.name ? prettyName(m.name) : `Componente ${i + 1}`, colorable.length - 1));
+  });
+  sel.disabled = !colorable.length;
+  $("colorSection").style.display = colorable.length ? "" : "none";
+  syncSwatchState();
+}
+
+function currentMat() { return colorable[+$("matSelect").value || 0]; }
+
+function applyColor(hex) {
+  const m = currentMat(); if (!m) return;
+  m.pbrMetallicRoughness.setBaseColorFactor(hex);
+  $("customColor").value = hex;
+  syncSwatchState();
+}
+
+function syncSwatchState() {
+  const m = currentMat(); if (!m) return;
+  const cur = hexOf(m.pbrMetallicRoughness.baseColorFactor).toLowerCase();
+  document.querySelectorAll(".sw").forEach((s) => s.classList.toggle("active", s.dataset.c.toLowerCase() === cur));
+  $("customColor").value = cur;
+}
+
+document.querySelectorAll(".sw").forEach((s) => (s.onclick = () => applyColor(s.dataset.c)));
+$("customColor").oninput = (e) => applyColor(e.target.value);
+$("matSelect").onchange = syncSwatchState;
+$("resetColor").onclick = () => {
+  originals.forEach((rgba, m) => { if (!FLAME_RX.test(m.name || "")) m.pbrMetallicRoughness.setBaseColorFactor(rgba); });
+  syncSwatchState(); toast("Colori originali ripristinati");
+};
+
+/* ------------------------------------------------------------------
+   Fiamma animata (disegnata al volo su canvas, usata come texture)
+------------------------------------------------------------------- */
+const flameCanvas = document.createElement("canvas");
+flameCanvas.width = flameCanvas.height = 256;
+const fctx = flameCanvas.getContext("2d");
+let flameMats = [], flameTexture = null, flameOn = false, flameRaf = 0;
+
+function drawFlame(t) {
+  const W = 256, H = 256, cx = W / 2, base = H - 8;
+  fctx.clearRect(0, 0, W, H);
+  fctx.globalCompositeOperation = "lighter";
+
+  const glow = fctx.createRadialGradient(cx, base, 4, cx, base, 120);
+  glow.addColorStop(0, "rgba(255,140,40,.55)"); glow.addColorStop(1, "rgba(255,60,0,0)");
+  fctx.fillStyle = glow; fctx.fillRect(0, 0, W, H);
+
+  const layers = [
+    { k: 1.00, w: 70, a: "rgba(255,70,0,0)",   b: "rgba(255,95,10,.95)" },
+    { k: 0.78, w: 52, a: "rgba(255,150,20,0)", b: "rgba(255,185,40,.95)" },
+    { k: 0.52, w: 34, a: "rgba(255,230,120,0)", b: "rgba(255,250,200,1)" },
+  ];
+  layers.forEach((L, i) => {
+    const flick = 1 + Math.sin(t * 9 + i * 2.1) * 0.06 + Math.sin(t * 21 + i) * 0.035;
+    const hh = (H - 30) * L.k * flick;
+    const sway = Math.sin(t * 3.1 + i * 1.7) * 16 * (1 - i * 0.25);
+    const w = L.w * (1 + Math.sin(t * 6 + i) * 0.05);
+    const g = fctx.createLinearGradient(0, base, 0, base - hh);
+    g.addColorStop(0, L.b); g.addColorStop(0.55, L.b); g.addColorStop(1, L.a);
+    fctx.fillStyle = g;
+    fctx.beginPath();
+    fctx.moveTo(cx, base);
+    fctx.bezierCurveTo(cx - w * 1.25, base - hh * 0.18, cx - w * 0.8 + sway * 0.4, base - hh * 0.62, cx + sway, base - hh);
+    fctx.bezierCurveTo(cx + w * 0.8 + sway * 0.4, base - hh * 0.62, cx + w * 1.25, base - hh * 0.18, cx, base);
+    fctx.fill();
+  });
+  fctx.globalCompositeOperation = "source-over";
+}
+
+function flameLoop(ms) {
+  if (!flameOn) return;
+  drawFlame(ms / 1000);
+  try { flameTexture?.source?.update?.(); } catch (e) {}
+  flameRaf = requestAnimationFrame(flameLoop);
+}
+
+function setFlame(on) {
+  if (!flameMats.length) return;
+  flameOn = on;
+  cancelAnimationFrame(flameRaf);
+  if (on) {
+    drawFlame(0);
+    flameTexture = flameTexture || viewer.createCanvasTexture(flameCanvas);
+    flameMats.forEach((m) => {
+      m.setAlphaMode("BLEND");
+      try { m.setDoubleSided(true); } catch (e) {}
+      m.pbrMetallicRoughness.setBaseColorFactor([1, 1, 1, 1]);
+      m.pbrMetallicRoughness.baseColorTexture.setTexture(flameTexture);
+      m.setEmissiveFactor([1, 1, 1]);
+      m.emissiveTexture.setTexture(flameTexture);
+    });
+    flameRaf = requestAnimationFrame(flameLoop);
+  } else {
+    flameMats.forEach((m) => {
+      m.pbrMetallicRoughness.baseColorTexture.setTexture(null);
+      m.emissiveTexture.setTexture(null);
+      m.setEmissiveFactor([0, 0, 0]);
+      m.pbrMetallicRoughness.setBaseColorFactor(originals.get(m) || [0.1, 0.1, 0.1, 1]);
+    });
+  }
+}
+
+function buildFlame() {
+  cancelAnimationFrame(flameRaf); flameOn = false; flameTexture = null;
+  flameMats = (viewer.model?.materials || []).filter((m) => FLAME_RX.test(m.name || ""));
+  const t = $("flameToggle"), note = $("flameNote");
+  t.disabled = !flameMats.length;
+  if (flameMats.length) {
+    note.textContent = `Trovato il componente «${flameMats[0].name}».`;
+    t.checked = true; setFlame(true);
+  } else {
+    t.checked = false;
+    note.textContent = "Questo modello non ha un componente con «fiamma», «flame» o «fire» nel nome.";
+  }
+}
+$("flameToggle").onchange = (e) => setFlame(e.target.checked);
+
+/* ------------------------------------------------------------------
+   Eventi del viewer e controlli vista
+------------------------------------------------------------------- */
+viewer.addEventListener("load", () => {
+  buildMaterials();
+  buildFlame();
+  const n = viewer.model.materials.length;
+  $("modelMeta").textContent = `${n} ${n === 1 ? "materiale" : "materiali"}`;
+});
+viewer.addEventListener("error", () => { $("modelMeta").textContent = ""; toast("Impossibile aprire questo file"); });
+
+$("autoRotate").onchange = (e) => e.target.checked ? viewer.setAttribute("auto-rotate", "") : viewer.removeAttribute("auto-rotate");
+$("shadowToggle").onchange = (e) => (viewer.shadowIntensity = e.target.checked ? 1 : 0);
+$("exposure").oninput = (e) => (viewer.exposure = +e.target.value);
+$("resetCam").onclick = () => { viewer.cameraOrbit = "auto auto auto"; viewer.cameraTarget = "auto auto auto"; viewer.fieldOfView = "auto"; };
+</script>
+</body>
+</html>
