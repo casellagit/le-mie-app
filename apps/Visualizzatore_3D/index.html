@@ -173,6 +173,12 @@
   .btn.attention { animation: nudge 1s ease-in-out 4; }
   @media (prefers-reduced-motion: reduce) { .btn.attention { animation: none; outline: 2px solid var(--brass); } }
 
+  .seg { display: flex; gap: 4px; padding: 4px; margin-top: 12px; background: #141a1d; border-radius: 13px; }
+  .segbtn { flex: 1; border: 0; padding: 9px 8px; border-radius: 9px; background: transparent; color: var(--ink-dim); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .segbtn:hover { color: var(--ink); }
+  .segbtn.on { background: var(--brass); color: #1b1608; }
+  .seg-label { margin: 14px 0 0; font-size: 12.5px; color: var(--ink-dim); }
+
   :focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
 
   .ar-btn {
@@ -277,6 +283,11 @@
     <p class="note" id="flameNote"></p>
     <div id="flameTools" hidden>
       <select id="flameSelect" aria-label="Fiamma da regolare"></select>
+      <p class="seg-label">Video usato per questa fiamma</p>
+      <div class="seg" role="group" aria-label="Video della fiamma" style="margin-top:6px">
+        <button type="button" class="segbtn" data-video="fiamma">fiamma</button>
+        <button type="button" class="segbtn" data-video="fiammal">fiammal</button>
+      </div>
       <div class="pads">
         <div class="dpad">
           <button class="pad up" data-act="up" aria-label="Sposta la fiamma in alto"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l6-6 6 6"/></svg></button>
@@ -638,7 +649,9 @@ $("resetColor").onclick = () => {
    Fiamma: il video viene disegnato su un canvas, il nero diventa
    trasparente e il canvas fa da texture del materiale.
 ------------------------------------------------------------------- */
-const DEFAULT_FLAME = { x: 0, y: 0, z: 1, rot: 0, flip: true, thr: 8 };
+const DEFAULT_FLAME = { x: 0, y: 0, z: 1, rot: 0, flip: true, thr: 8, video: "auto" };
+const VIDEO_FILES = { fiamma: "./fiamma.mp4", fiammal: "./fiamma_l.mp4" };   // scelta manuale, vale più del nome del materiale
+const shortName = (src) => src.replace("./", "");
 let flames = [];                 // { m, src, st, key, video, tex, canvas, ctx, ... }
 let flameOn = false, flameRaf = 0;
 const videoCache = new Map();
@@ -719,15 +732,18 @@ async function setFlame(on) {
       try {
         f.video = getVideo(f.src);
         await whenMeta(f.video);
-        if (!f.tex) {
-          f.tex = viewer.createCanvasTexture();
-          f.canvas = f.tex.source.element;
+        f.cache = f.cache || {};
+        if (!f.cache[f.src]) {                       // una texture per ogni video: hanno proporzioni diverse
+          const tex = viewer.createCanvasTexture();
+          const canvas = tex.source.element;
           const k = Math.min(1, 640 / Math.max(f.video.videoWidth, f.video.videoHeight));
-          f.canvas.width = Math.round(f.video.videoWidth * k);
-          f.canvas.height = Math.round(f.video.videoHeight * k);
-          f.ctx = f.canvas.getContext("2d", { willReadFrequently: true });
-          try { f.tex.sampler.setWrapS("ClampToEdge"); f.tex.sampler.setWrapT("ClampToEdge"); } catch (e) {}
+          canvas.width = Math.round(f.video.videoWidth * k);
+          canvas.height = Math.round(f.video.videoHeight * k);
+          const ctx = canvas.getContext("2d", { willReadFrequently: true });
+          try { tex.sampler.setWrapS("ClampToEdge"); tex.sampler.setWrapT("ClampToEdge"); } catch (e) {}
+          f.cache[f.src] = { tex, canvas, ctx };
         }
+        ({ tex: f.tex, canvas: f.canvas, ctx: f.ctx } = f.cache[f.src]);
         if (!f.saved) f.saved = {
           alpha: m.alphaMode, ds: m.doubleSided,
           base: [...m.pbrMetallicRoughness.baseColorFactor],
@@ -743,7 +759,7 @@ async function setFlame(on) {
         m.emissiveTexture.setTexture(f.tex);
         f.dirty = true;
       } catch (err) {
-        console.error(err); toast("Non riesco a leggere il video «" + f.src.replace("./", "") + "»");
+        console.error(err); toast("Non riesco a leggere il video «" + shortName(f.src) + "»");
       }
     } else if (f.saved) {
       m.emissiveTexture.setTexture(f.saved.emisTex);
@@ -759,8 +775,31 @@ async function setFlame(on) {
 
 const activeFlame = () => flames[+$("flameSelect").value || 0];
 
+function updateFlameNote() {
+  if (!flames.length) return;
+  const sel = $("flameSelect");
+  flames.forEach((f, i) => { if (sel.options[i]) sel.options[i].text = `${f.m.name} (${shortName(f.src)})`; });
+  $("flameNote").textContent = flames.length === 1
+    ? `«${flames[0].m.name}» usa ${shortName(flames[0].src)}.`
+    : "Scegli quale fiamma regolare.";
+}
+
+document.querySelectorAll("[data-video]").forEach((btn) => {
+  btn.onclick = () => {
+    const f = activeFlame(); if (!f) return;
+    f.st.video = btn.dataset.video;
+    f.src = VIDEO_FILES[f.st.video];
+    saveFlameState(f); syncFlameControls(); updateFlameNote();
+    if (flameOn) setFlame(true);                       // riapplica la fiamma col video scelto
+  };
+});
+
 function syncFlameControls() {
   const f = activeFlame(); if (!f) return;
+  document.querySelectorAll("[data-video]").forEach((b) => {
+    const on = VIDEO_FILES[b.dataset.video] === f.src;
+    b.classList.toggle("on", on); b.setAttribute("aria-pressed", on);
+  });
   $("flameFlip").checked = f.st.flip;
   $("flameThr").value = f.st.thr;
 }
@@ -795,7 +834,7 @@ document.querySelectorAll("[data-act]").forEach((btn) => {
   ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => btn.addEventListener(ev, stop));
   btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); nudge(btn.dataset.act); } });
 });
-$("flameCenter").onclick = () => { const f = activeFlame(); if (!f) return; f.st = { ...DEFAULT_FLAME }; saveFlameState(f); syncFlameControls(); };
+$("flameCenter").onclick = () => { const f = activeFlame(); if (!f) return; f.st = { ...DEFAULT_FLAME, video: f.st.video }; saveFlameState(f); syncFlameControls(); };
 $("flameFlip").onchange = (e) => { const f = activeFlame(); if (f) { f.st.flip = e.target.checked; saveFlameState(f); } };
 $("flameThr").oninput = (e) => { const f = activeFlame(); if (f) { f.st.thr = +e.target.value; saveFlameState(f); } };
 $("flameSelect").onchange = syncFlameControls;
@@ -805,18 +844,17 @@ function buildFlame() {
   cancelAnimationFrame(flameRaf); flameOn = false;
   flames = (viewer.model?.materials || []).filter(isFlame).map((m) => {
     const key = `flame:${currentLabel}:${m.name}`;
-    return { m, src: flameSrcFor(m.name), key, st: loadFlameState(key), dirty: true, last: -1 };
+    const st = loadFlameState(key), auto = flameSrcFor(m.name);
+    return { m, auto, src: VIDEO_FILES[st.video] || auto, key, st, dirty: true, last: -1 };
   });
   const t = $("flameToggle"), note = $("flameNote"), sel = $("flameSelect");
   t.disabled = !flames.length;
   $("flameTools").hidden = !flames.length;
   sel.innerHTML = "";
-  flames.forEach((f, i) => sel.add(new Option(`${f.m.name} (${f.src.replace("./", "")})`, i)));
+  flames.forEach((f, i) => sel.add(new Option(`${f.m.name} (${shortName(f.src)})`, i)));
   sel.style.display = flames.length > 1 ? "" : "none";
   if (flames.length) {
-    note.textContent = flames.length === 1
-      ? `«${flames[0].m.name}» usa ${flames[0].src.replace("./", "")}.`
-      : "Scegli quale fiamma regolare.";
+    updateFlameNote();
     t.checked = true; syncFlameControls(); setFlame(true);
   } else {
     t.checked = false;
