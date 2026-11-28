@@ -344,6 +344,8 @@ for (const src of MV_SOURCES) {
   try { await import(src); break; } catch (e) { console.warn("model-viewer non caricato da", src); }
 }
 await customElements.whenDefined("model-viewer");
+// model-viewer decomprime Draco e KTX2 da solo, ma NON la compressione meshopt: serve indicare il decoder.
+try { customElements.get("model-viewer").meshoptDecoderLocation = "https://cdn.jsdelivr.net/npm/meshoptimizer@0.20.0/meshopt_decoder.js"; } catch (e) { console.warn("decoder meshopt non impostato", e); }
 
 const $ = (id) => document.getElementById(id);
 const viewer = $("viewer");
